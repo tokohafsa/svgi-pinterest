@@ -1,5 +1,5 @@
 SVGI PINTEREST PIPELINE — MEMORY FILE
-Generated: 2026-07-11 (updated)
+Generated: 2026-07-11 (updated v4)
 ======================================
 
 ## AKUN
@@ -16,13 +16,14 @@ Monetisasi via Fiverr affiliate link (belum diisi, pending setup)
 - AI/Model: Groq API (llama-3.3-70b-versatile)
 - Video fetch: yt-dlp
 - Storage: Dropbox API (App Folder: /Apps/SVGI Pinterest/)
-- Output: CSV otomatis tersimpan ke Dropbox (bukan download)
+- Output: CSV + video otomatis tersimpan ke folder session di Dropbox
 
 ## STRUKTUR FILE
 svgi-pinterest/
 ├── app.py                        ← main Streamlit app
 ├── requirements.txt
 ├── .gitignore                    ← secrets.toml dikecualikan
+├── svgi_pinterest_memory.txt     ← file ini, disimpan di repo
 ├── .streamlit/
 │   ├── config.toml               ← light theme, primary color sage green #5B7B6F
 │   └── secrets.toml              ← tidak di-push ke GitHub
@@ -33,10 +34,12 @@ svgi-pinterest/
     ├── model.py                  ← Groq: detect credits + generate SEO content
     └── scheduler.py              ← randomize publish dates dalam rentang waktu
 
-## PIPELINE FLOW (per pin)
+## PIPELINE FLOW (per session)
+0. Klik New Session → buat folder Dropbox: /2026-07-11_1430
 1. Paste URL Instagram reel/post
-2. Fetch metadata (yt-dlp) + download video + upload ke Dropbox otomatis
+2. Fetch metadata (yt-dlp) + download video + upload ke folder session Dropbox
 3. Preview video (dari Dropbox link) — max height 300px, 50% width
+   + fallback link button untuk Safari/iPadOS
 4. Set thumbnail timestamp (e.g. 0:04)
 5. Raw caption ditampilkan (read-only)
 6. Credits auto-detect dari caption (editable): client, animator, logo_maker
@@ -44,9 +47,19 @@ svgi-pinterest/
 8. Generate → review/edit Title, Description, Keywords
 9. Regenerate jika perlu
 10. Add to Queue
-11. Loop untuk URL baru
-12. Export CSV → tersimpan otomatis ke Dropbox sebagai bulk_logo_{tanggal}.csv
+11. Loop ke step 1 untuk URL baru
+12. Export CSV → tersimpan ke folder session yang sama
 13. Klik tombol Upload to Pinterest → buka Pinterest bulk upload
+
+## STRUKTUR FOLDER DROPBOX PER SESSION
+/Apps/SVGI Pinterest/
+└── 2026-07-11_1430/
+    ├── video_abc123.mp4
+    ├── video_def456.mp4
+    └── bulk_logo_2026-07-11_1430.csv
+
+Suffix waktu _HHMM mencegah collision jika 2 session di hari sama.
+New Session = reset queue + folder baru. Video lama tidak terhapus.
 
 ## FORMAT TITLE
 {Nama} Logo Animation. {CTA}
@@ -54,7 +67,7 @@ Contoh: "Nude Logo Animation. Link in bio 🔗 to get a custom animated logo tod
 
 ## FORMAT DESCRIPTION
 {credit_line}
-{2-3 kalimat SEO natural tentang animasi}
+{2-3 kalimat SEO natural tentang animasi — selalu 2D, tidak pernah sebut 3D}
 {CTA-2 berbeda dari CTA title}
 
 Catatan: Title TIDAK diulang di baris pertama description
@@ -78,8 +91,8 @@ Catatan: Title TIDAK diulang di baris pertama description
 Title, Video URL, Pinterest board, Thumbnail, Description, Link, Publish date, Keywords
 
 ## CSV NAMING & STORAGE
-- Nama file: bulk_logo_{YYYY-MM-DD}.csv
-- Lokasi: /Apps/SVGI Pinterest/ (root App Folder Dropbox)
+- Nama file: bulk_logo_{folder_session}.csv (e.g. bulk_logo_2026-07-11_1430.csv)
+- Lokasi: /Apps/SVGI Pinterest/{session_folder}/
 - Tidak ada download — langsung tersimpan ke Dropbox
 - Setelah export: tampil path + tombol Upload to Pinterest
 
@@ -110,7 +123,7 @@ Transaksional:
 
 Transformasi:
 - Go to bio ⚡ to bring your brand logo to life!
-- Bio link 📲 to transform your logo into stunning 3D.
+- Bio link 📲 to bring your logo to life with motion graphics.
 - Check profile ✨ to upgrade your logo with motion graphics.
 - Visit profile 🎬 to make your static logo move beautifully.
 - Link in bio 💎 to turn your logo into an eye-catching animation.
@@ -125,7 +138,7 @@ Mudah & Cepat:
 - Permission: Scoped App (App Folder)
 - App name: SVGI Pinterest
 - App Folder path: /Apps/SVGI Pinterest/
-- DROPBOX_FOLDER = "/" (root dari app folder)
+- DROPBOX_FOLDER = "/" di secrets (base folder, session subfolder dibuat dinamis)
 - Auth: OAuth2 Refresh Token (permanent, tidak expired)
 - App key: l1c50p00605pykv
 - Shared link format: dl.dropboxusercontent.com dengan ?dl=1
@@ -163,3 +176,6 @@ AFFILIATE_LINK = ""   # isi setelah Fiverr affiliate siap
 - Variable 'col' conflict di dict comprehension → diganti jadi 'c'
 - gemini-1.5-flash deprecated → migrated ke Groq llama-3.3-70b-versatile
 - Dropbox App Folder token tidak bisa akses root → gunakan DROPBOX_FOLDER="/"
+- Model generate 3D dalam deskripsi → CTA "3D" dihapus + instruksi eksplisit di prompt
+- Preview video tidak muncul di Safari iPadOS → tambah link_button fallback
+- csv_ready vs csv_uploaded_path naming conflict di clear queue → difix konsisten

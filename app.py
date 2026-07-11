@@ -40,6 +40,7 @@ for key, default in {
     "cta_counter": 0,
     "stage": "input",
     "current": {},
+    "session_folder": "",   # e.g. "/2026-07-11" — set saat New Session
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -47,6 +48,32 @@ for key, default in {
 # ── Header ────────────────────────────────────────────────────────────────────
 st.title("🎬 SVGI Pinterest Pipeline")
 st.caption("Instagram → Dropbox → Pinterest CSV")
+
+# ── New Session button ────────────────────────────────────────────────────────
+col_hdr, col_new = st.columns([4, 1])
+with col_hdr:
+    if st.session_state.session_folder:
+        st.caption(f"📁 Session folder: `{st.session_state.session_folder}`")
+    else:
+        st.caption("No active session. Click **New Session** to start.")
+with col_new:
+    if st.button("🆕 New Session", type="primary"):
+        today_str = date.today().strftime("%Y-%m-%d")
+        # Add time suffix if folder already exists this date
+        time_str = datetime.now().strftime("%H%M")
+        st.session_state.session_folder = f"/{today_str}_{time_str}"
+        st.session_state.pins = []
+        st.session_state.cta_counter = 0
+        st.session_state.stage = "input"
+        st.session_state.current = {}
+        if "csv_uploaded_path" in st.session_state:
+            del st.session_state["csv_uploaded_path"]
+        st.rerun()
+
+if not st.session_state.session_folder:
+    st.info("👆 Click **New Session** to create a dated folder in Dropbox and start adding pins.")
+    st.stop()
+
 st.divider()
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -76,7 +103,7 @@ if ig_url and st.button("🔽 Fetch & Upload to Dropbox", type="primary"):
     with st.spinner("Uploading to Dropbox..."):
         try:
             video_url = upload_and_get_link(
-                video_path, DROPBOX_FOLDER,
+                video_path, st.session_state.session_folder,
                 token=DROPBOX_TOKEN,
                 app_key=DROPBOX_APP_KEY,
                 app_secret=DROPBOX_APP_SECRET,
@@ -275,11 +302,11 @@ if st.session_state.pins:
                     df_export.to_csv(buf, index=False)
                     csv_bytes = buf.getvalue().encode("utf-8")
 
-                    today_str = date.today().strftime("%Y-%m-%d")
-                    fname = f"bulk_logo_{today_str}.csv"
+                    folder_name = st.session_state.session_folder.strip("/")
+                    fname = f"bulk_logo_{folder_name}.csv"
 
                     dropbox_path = upload_csv(
-                        csv_bytes, fname, DROPBOX_FOLDER,
+                        csv_bytes, fname, st.session_state.session_folder,
                         token=DROPBOX_TOKEN,
                         app_key=DROPBOX_APP_KEY,
                         app_secret=DROPBOX_APP_SECRET,
@@ -306,6 +333,6 @@ if st.session_state.pins:
     with col_clr:
         if st.button("🗑️ Clear Queue"):
             st.session_state.pins = []
-            if "csv_ready" in st.session_state:
-                del st.session_state["csv_ready"]
+            if "csv_uploaded_path" in st.session_state:
+                del st.session_state["csv_uploaded_path"]
             st.rerun()
