@@ -1,0 +1,142 @@
+SVGI PINTEREST PIPELINE — MEMORY FILE
+Generated: 2026-07-11
+======================================
+
+## AKUN
+- Pinterest: svg_i (171K monthly views, 1.6K followers)
+- Niche: Logo Animation
+- IG source konten: repost dari kreator logo animation di Instagram
+
+## TUJUAN APP
+Automate pipeline dari Instagram → Dropbox → Pinterest CSV bulk upload
+Monetisasi via Fiverr affiliate link (belum diisi, pending setup)
+
+## STACK
+- Framework: Streamlit (deployed ke Streamlit Cloud)
+- AI/Model: Groq API (llama-3.3-70b-versatile)
+- Video fetch: yt-dlp
+- Storage: Dropbox API (App Folder: /Apps/SVGI Pinterest/)
+- Output: CSV format Pinterest bulk upload
+
+## STRUKTUR FILE
+svgi-pinterest/
+├── app.py                        ← main Streamlit app
+├── requirements.txt
+├── .gitignore
+├── .streamlit/
+│   ├── config.toml               ← light theme, primary color #5B7B6F (sage green)
+│   └── secrets.toml              ← tidak di-push ke GitHub
+└── utils/
+    ├── __init__.py
+    ├── instagram.py              ← yt-dlp fetch metadata + download video
+    ├── dropbox_client.py         ← upload ke Dropbox + generate shared link dl=1
+    ├── model.py                  ← Groq: detect credits + generate SEO content
+    └── scheduler.py              ← randomize publish dates dalam rentang waktu
+
+## PIPELINE FLOW (per pin)
+1. Paste URL Instagram reel/post
+2. Fetch metadata (yt-dlp) + download video + upload ke Dropbox otomatis
+3. Preview video (dari Dropbox link) — 50% width
+4. Set thumbnail timestamp (e.g. 0:04)
+5. Raw caption ditampilkan
+6. Credits auto-detect dari caption (editable): client, animator, logo_maker
+7. Input pin name opsional + pilih Board + pilih Sektor (opsional, untuk SEO)
+8. Generate → review/edit Title, Description, Keywords
+9. Regenerate jika perlu
+10. Add to Queue
+11. Loop untuk URL baru
+12. Export CSV (toggle schedule ON/OFF)
+
+## FORMAT TITLE
+{Nama} Logo Animation. {CTA}
+Contoh: "Nude Logo Animation. Link in bio 🔗 to get a custom animated logo today!"
+
+## FORMAT DESCRIPTION
+{Nama} Logo Animation. {CTA-1}
+for @client | Credit: @animator on Instagram | Logo by @logo_maker
+{2-3 kalimat SEO natural tentang animasi}
+{CTA-2 berbeda dari CTA title}
+
+## CREDIT FORMAT RULES
+- animator: SELALU = uploader_id (akun yang posting di IG)
+- client: @mention yang disebut sebagai pemilik logo / "for @", "with @"
+- logo_maker: @mention yang disebut sebagai logo designer ("logo by @", "design by @")
+- Jika tidak ada client: "Credit: @animator on Instagram"
+- Jika ada client: "for @client | Credit: @animator on Instagram"
+- Jika ada logo_maker: tambahkan "| Logo by @logo_maker"
+
+## UPLOADER_ID DETECTION (instagram.py)
+Priority order:
+1. uploader_url field → parse username dari URL instagram.com/username/
+2. uploader_id field → hanya jika bukan numerik dan tidak ada spasi
+3. channel field → fallback
+4. channel_url → parse username
+5. @mention pertama di caption → last resort
+
+## CSV COLUMNS (Pinterest bulk upload format)
+Title, Video URL, Pinterest board, Thumbnail, Description, Link, Publish date, Keywords
+
+## PUBLISH DATE FORMAT
+ISO format: 2026-07-15T12:19:00
+Toggle schedule: OFF = kosong (direct post), ON = randomize dalam rentang tanggal
+Jam randomize antara 09:00 - 21:00, tidak collision
+
+## BOARDS (hardcoded)
+- Logo Animations
+- E Sports Gaming Logo Animations
+- Famous Brand Logo Animations
+
+## CTA VARIANTS (14 rotasi otomatis per pin)
+Transaksional:
+- Link in bio 🔗 to get a custom animated logo today!
+- Tap bio 👆 to order your professional logo animation.
+- Click bio 🖱️ to get your static logo animated now.
+- Visit bio 🚀 to start your logo animation process.
+- Go to bio 💼 to get your brand logo animated fast.
+Transformasi:
+- Go to bio ⚡ to bring your brand logo to life!
+- Bio link 📲 to transform your logo into stunning 3D.
+- Check profile ✨ to upgrade your logo with motion graphics.
+- Visit profile 🎬 to make your static logo move beautifully.
+- Link in bio 💎 to turn your logo into an eye-catching animation.
+Mudah & Cepat:
+- Link in bio 🎯 to easily get your logo animated.
+- Tap bio ⚡ for a quick and professional logo animation.
+- Click bio 🤝 to get a high-quality animated logo without hassle.
+- Visit bio 🔥 to get your logo animated quickly and easily.
+
+## DROPBOX CONFIG
+- Permission: Scoped App (App Folder)
+- App Folder: /Apps/SVGI Pinterest/
+- DROPBOX_FOLDER = "/" (root dari app folder)
+- Auth: OAuth2 Refresh Token (permanent, tidak expired)
+- App key: l1c50p00605pykv
+- Shared link format: dl.dropboxusercontent.com dengan ?dl=1
+
+## STREAMLIT SECRETS (template)
+GROQ_API_KEY = "..."
+DROPBOX_TOKEN = ""
+DROPBOX_APP_KEY = "l1c50p00605pykv"
+DROPBOX_APP_SECRET = "..."
+DROPBOX_REFRESH_TOKEN = "..."
+DROPBOX_FOLDER = "/"
+AFFILIATE_LINK = ""   # isi setelah Fiverr affiliate siap
+
+## AFFILIATE STRATEGY
+- Platform: Fiverr (pending — belum daftar affiliate)
+- Link: hardcoded di config, 1 link untuk semua pin
+- Fiverr cookie-based 30 hari — tidak perlu deep link per gig
+- Jika AFFILIATE_LINK kosong → otomatis pakai URL post IG original
+- Rencana test: 10 pin dulu untuk cek apakah Pinterest accept
+
+## DEPLOYMENT
+- GitHub repo: private → switch public untuk Streamlit Cloud
+- Streamlit Cloud: share.streamlit.io
+- Auto-reboot saat push ke GitHub
+
+## KNOWN ISSUES & FIXES
+- yt-dlp kadang return nama display (e.g. "Ashot S.") bukan username → solved via uploader_url parsing
+- Dropbox access token expired 4 jam → solved via refresh token
+- st.data_editor sync issue → fixed dengan fillna("") sebelum to_dict
+- CSV export button tidak bekerja dalam st.button → solved dengan simpan ke session_state dulu
+- gemini-1.5-flash deprecated → migrated ke Groq llama-3.3-70b-versatile

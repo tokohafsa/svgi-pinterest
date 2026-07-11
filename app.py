@@ -116,6 +116,11 @@ if st.session_state.stage in ("uploaded", "generated"):
     col_vid, col_thumb = st.columns([1, 1])
     with col_vid:
         st.subheader("② Preview")
+        st.markdown("""
+            <style>
+            video { max-height: 500px; }
+            </style>
+        """, unsafe_allow_html=True)
         st.video(cur["video_url"])
     with col_thumb:
         st.subheader("Thumbnail timestamp")
