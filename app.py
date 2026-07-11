@@ -15,7 +15,10 @@ st.set_page_config(page_title="SVGI Pinterest Tool", page_icon="🎬", layout="w
 # ── Secrets ───────────────────────────────────────────────────────────────────
 try:
     GROQ_KEY = st.secrets["GROQ_API_KEY"]
-    DROPBOX_TOKEN = st.secrets["DROPBOX_TOKEN"]
+    DROPBOX_TOKEN = st.secrets.get("DROPBOX_TOKEN", "")
+    DROPBOX_APP_KEY = st.secrets.get("DROPBOX_APP_KEY", "")
+    DROPBOX_APP_SECRET = st.secrets.get("DROPBOX_APP_SECRET", "")
+    DROPBOX_REFRESH_TOKEN = st.secrets.get("DROPBOX_REFRESH_TOKEN", "")
     DROPBOX_FOLDER = st.secrets.get("DROPBOX_FOLDER", "/")
     AFFILIATE_LINK = st.secrets.get("AFFILIATE_LINK", "")
 except Exception:
