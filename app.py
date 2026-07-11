@@ -277,12 +277,12 @@ if st.session_state.pins:
                         end_dt = datetime.combine(sched_end, datetime.min.time())
                         schedules = generate_schedule(start_dt, end_dt, len(pins_now))
                         for i, pin in enumerate(pins_now):
-                            p = {col: pin.get(col, "") for col in CSV_COLUMNS}
+                            p = {c: pin.get(c, "") for c in CSV_COLUMNS}
                             p["Publish date"] = schedules[i]
                             export.append(p)
                     else:
                         for pin in pins_now:
-                            p = {col: pin.get(col, "") for col in CSV_COLUMNS}
+                            p = {c: pin.get(c, "") for c in CSV_COLUMNS}
                             p["Publish date"] = ""
                             export.append(p)
 
