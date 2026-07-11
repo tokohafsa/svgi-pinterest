@@ -300,12 +300,19 @@ if st.session_state.pins:
                 st.error(f"❌ {e}")
 
         if "csv_ready" in st.session_state:
-            st.download_button(
-                "⬇️ Download CSV",
-                data=st.session_state["csv_ready"],
-                file_name=st.session_state.get("csv_filename", "SVGI_Pinterest.csv"),
-                mime="text/csv",
-            )
+            col_dl, col_pin = st.columns([1, 1])
+            with col_dl:
+                st.download_button(
+                    "⬇️ Download CSV",
+                    data=st.session_state["csv_ready"],
+                    file_name=st.session_state.get("csv_filename", "SVGI_Pinterest.csv"),
+                    mime="text/csv",
+                )
+            with col_pin:
+                st.link_button(
+                    "📌 Upload to Pinterest",
+                    url="https://www.pinterest.com/settings/bulk-create-pins/",
+                )
     with col_clr:
         if st.button("🗑️ Clear Queue"):
             st.session_state.pins = []
