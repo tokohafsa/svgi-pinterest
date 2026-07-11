@@ -118,7 +118,7 @@ if st.session_state.stage in ("uploaded", "generated"):
         st.subheader("② Preview")
         st.markdown("""
             <style>
-            video { max-height: 500px; }
+            video { max-height: 300px; }
             </style>
         """, unsafe_allow_html=True)
         st.video(cur["video_url"])
