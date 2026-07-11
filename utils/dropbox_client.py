@@ -1,25 +1,20 @@
 import dropbox
-from dropbox import DropboxOAuth2FlowNoRedirect
 import os
 
 
-def get_dropbox_client(token: str, app_key: str = "", app_secret: str = "", refresh_token: str = "") -> dropbox.Dropbox:
-    """
-    Return authenticated Dropbox client.
-    Prefers refresh_token (permanent) over access token (expires in 4h).
-    """
+def upload_and_get_link(local_path: str, dropbox_folder: str, token: str = "",
+                         app_key: str = "", app_secret: str = "", refresh_token: str = "") -> str:
+    # Use refresh token if available (permanent), else fall back to access token
     if refresh_token and app_key and app_secret:
-        return dropbox.Dropbox(
+        dbx = dropbox.Dropbox(
             oauth2_refresh_token=refresh_token,
             app_key=app_key,
             app_secret=app_secret,
         )
-    return dropbox.Dropbox(token)
-
-
-def upload_and_get_link(local_path: str, dropbox_folder: str, token: str,
-                         app_key: str = "", app_secret: str = "", refresh_token: str = "") -> str:
-    dbx = get_dropbox_client(token, app_key, app_secret, refresh_token)
+    elif token:
+        dbx = dropbox.Dropbox(token)
+    else:
+        raise RuntimeError("No valid Dropbox credentials. Set DROPBOX_REFRESH_TOKEN + DROPBOX_APP_KEY + DROPBOX_APP_SECRET in secrets.")
 
     filename = os.path.basename(local_path)
     dropbox_path = f"{dropbox_folder.rstrip('/')}/{filename}"
