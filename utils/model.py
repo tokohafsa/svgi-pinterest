@@ -103,28 +103,27 @@ def generate_content(
     """Generate SEO title, description, keywords."""
     groq_client = Groq(api_key=api_key)
     keyword_context = BOARDS_KEYWORD_CONTEXT.get(board, BOARDS_KEYWORD_CONTEXT["Logo Animations"])
-    cta = CTA_VARIANTS[cta_index % len(CTA_VARIANTS)]
-    # Use different CTA for title vs description
-    cta_title = cta
+    cta_title = CTA_VARIANTS[cta_index % len(CTA_VARIANTS)]
     cta_desc = CTA_VARIANTS[(cta_index + 1) % len(CTA_VARIANTS)]
 
     # Build credit line
     parts = []
-    if client and client != "null":
+    if client and client not in ("null", ""):
         parts.append(f"IG: {client}")
     if animator:
         parts.append(f"Credit: {animator} on Instagram")
-    if logo_maker and logo_maker != "null":
+    if logo_maker and logo_maker not in ("null", ""):
         parts.append(f"Logo by {logo_maker}")
     credit_line = " | ".join(parts) if parts else f"Credit: {animator} on Instagram"
 
     sector_ctx = f" | Sector: {sector}" if sector else ""
     sector_kw = f", {sector.lower()} industry" if sector else ""
+    sector_seo = f" Ideal for {sector.lower()} brands looking to elevate their visual identity." if sector else ""
 
     prompt = f"""You are a Pinterest SEO expert for logo animation content.
 Generate SEO-optimized Pinterest content. Return ONLY valid JSON, no markdown, no backticks.
 
-PIN TITLE (user provided, use as-is): "{pin_title}"
+PIN TITLE: "{pin_title}"
 BRAND NAME: {brand_name}
 BOARD: {board}
 KEYWORD CONTEXT: {keyword_context}{sector_ctx}
@@ -132,16 +131,12 @@ ORIGINAL CAPTION: {caption[:300]}
 
 Generate:
 - "keywords": comma-separated, max 20 highly relevant SEO keywords. Mix broad (logo animation, motion graphics) and specific (brand name, animation style{sector_kw}). No hashtags.
-- "seo_body": 2 sentences of natural SEO text about this specific animation. Mention motion style, brand energy, visual quality. Max 180 chars total. Do NOT start with the brand name.
+- "seo_body": 2 sentences of natural SEO text about this specific animation. Mention motion style, brand energy, visual quality.{sector_seo} Max 200 chars total. Do NOT repeat the pin title or brand name at the start.
 
-The Pinterest PIN TITLE will be:
-"{pin_title}. {cta_title}"
-
-The full description will be:
-Line 1: {pin_title}. {cta_title}
-Line 2: {credit_line}
-Line 3-4: seo_body
-Line 5: {cta_desc}
+Description format (for your reference only, do not include in output):
+Line 1: {credit_line}
+Line 2-3: seo_body
+Line 4: {cta_desc}
 
 Return:
 {{
@@ -163,7 +158,8 @@ Return:
         data = json.loads(text.strip())
 
         pin_title_full = f"{pin_title}. {cta_title}"
-        full_description = f"{pin_title_full}\n{credit_line}\n{data['seo_body']}\n{cta_desc}"
+        # Description: NO title repeat — starts directly with credit line
+        full_description = f"{credit_line}\n{data['seo_body']}\n{cta_desc}"
 
         return {
             "title": pin_title_full,
