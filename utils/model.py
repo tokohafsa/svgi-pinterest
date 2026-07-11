@@ -29,7 +29,7 @@ CTA_VARIANTS = [
     "Visit bio 🚀 to start your logo animation process.",
     "Go to bio 💼 to get your brand logo animated fast.",
     "Go to bio ⚡ to bring your brand logo to life!",
-    "Bio link 📲 to transform your logo into stunning 3D.",
+    "Bio link 📲 to bring your logo to life with motion graphics.",
     "Check profile ✨ to upgrade your logo with motion graphics.",
     "Visit profile 🎬 to make your static logo move beautifully.",
     "Link in bio 💎 to turn your logo into an eye-catching animation.",
@@ -131,7 +131,7 @@ ORIGINAL CAPTION: {caption[:300]}
 
 Generate:
 - "keywords": comma-separated, max 20 highly relevant SEO keywords. Mix broad (logo animation, motion graphics) and specific (brand name, animation style{sector_kw}). No hashtags.
-- "seo_body": 2 sentences of natural SEO text about this specific animation. Mention motion style, brand energy, visual quality.{sector_seo} Max 200 chars total. Do NOT repeat the pin title or brand name at the start.
+- "seo_body": 2 sentences of natural SEO text about this specific animation. Mention motion style, brand energy, visual quality.{sector_seo} Max 200 chars total. Do NOT repeat the pin title or brand name at the start. IMPORTANT: this is 2D logo animation — never mention 3D, three-dimensional, or 3D design.
 
 Description format (for your reference only, do not include in output):
 Line 1: {credit_line}
