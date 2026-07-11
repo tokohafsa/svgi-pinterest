@@ -6,7 +6,7 @@ from datetime import datetime, date, timedelta
 import io
 
 from utils.instagram import fetch_ig_metadata, download_ig_video
-from utils.dropbox_client import upload_and_get_link
+from utils.dropbox_client import upload_and_get_link, upload_csv
 from utils.model import detect_credits, generate_content, SECTORS
 from utils.scheduler import generate_schedule
 
@@ -275,23 +275,29 @@ if st.session_state.pins:
                     df_export.to_csv(buf, index=False)
                     csv_bytes = buf.getvalue().encode("utf-8")
 
-                    fname = f"SVGI_Pinterest_{sched_start}.csv" if use_schedule else "SVGI_Pinterest.csv"
-                    st.session_state["csv_ready"] = csv_bytes
-                    st.session_state["csv_filename"] = fname
+                    today_str = date.today().strftime("%Y-%m-%d")
+                    fname = f"bulk_logo_{today_str}.csv"
+
+                    dropbox_path = upload_csv(
+                        csv_bytes, fname, DROPBOX_FOLDER,
+                        token=DROPBOX_TOKEN,
+                        app_key=DROPBOX_APP_KEY,
+                        app_secret=DROPBOX_APP_SECRET,
+                        refresh_token=DROPBOX_REFRESH_TOKEN,
+                    )
+
+                    st.session_state["csv_uploaded_path"] = dropbox_path
+                    st.session_state["csv_fname"] = fname
                     st.session_state.pins = export
                     st.rerun()
             except Exception as e:
                 st.error(f"❌ Export error: {e}")
 
-        if "csv_ready" in st.session_state:
+        if "csv_uploaded_path" in st.session_state:
+            st.success(f"✅ CSV saved to Dropbox: `{st.session_state['csv_uploaded_path']}`")
             col_dl, col_pin = st.columns([1, 1])
             with col_dl:
-                st.download_button(
-                    "⬇️ Download CSV",
-                    data=st.session_state["csv_ready"],
-                    file_name=st.session_state.get("csv_filename", "SVGI_Pinterest.csv"),
-                    mime="text/csv",
-                )
+                st.info(f"📁 File: **{st.session_state['csv_fname']}**")
             with col_pin:
                 st.link_button(
                     "📌 Upload to Pinterest",
