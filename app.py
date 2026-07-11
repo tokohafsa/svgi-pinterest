@@ -38,8 +38,8 @@ CSV_COLUMNS = ["Title", "Video URL", "Pinterest board", "Thumbnail",
 for key, default in {
     "pins": [],
     "cta_counter": 0,
-    "stage": "input",       # input | uploaded | generated
-    "current": {},          # working data for current pin
+    "stage": "input",
+    "current": {},
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -76,17 +76,16 @@ if ig_url and st.button("🔽 Fetch & Upload to Dropbox", type="primary"):
     with st.spinner("Uploading to Dropbox..."):
         try:
             video_url = upload_and_get_link(
-                                video_path, DROPBOX_FOLDER,
-                                token=DROPBOX_TOKEN,
-                                app_key=DROPBOX_APP_KEY,
-                                app_secret=DROPBOX_APP_SECRET,
-                                refresh_token=DROPBOX_REFRESH_TOKEN,
-                            )
+                video_path, DROPBOX_FOLDER,
+                token=DROPBOX_TOKEN,
+                app_key=DROPBOX_APP_KEY,
+                app_secret=DROPBOX_APP_SECRET,
+                refresh_token=DROPBOX_REFRESH_TOKEN,
+            )
         except Exception as e:
             st.error(f"❌ Dropbox upload failed: {e}")
             st.stop()
 
-    # Detect credits from caption
     with st.spinner("Detecting credits from caption..."):
         credits = detect_credits(
             caption=meta.get("description", ""),
@@ -112,15 +111,10 @@ if st.session_state.stage in ("uploaded", "generated"):
 
     st.divider()
 
-    # Preview + Thumbnail
     col_vid, col_thumb = st.columns([1, 1])
     with col_vid:
         st.subheader("② Preview")
-        st.markdown("""
-            <style>
-            video { max-height: 300px; }
-            </style>
-        """, unsafe_allow_html=True)
+        st.markdown("<style>video { max-height: 300px; }</style>", unsafe_allow_html=True)
         st.video(cur["video_url"])
     with col_thumb:
         st.subheader("Thumbnail timestamp")
@@ -130,13 +124,11 @@ if st.session_state.stage in ("uploaded", "generated"):
 
     st.divider()
 
-    # Raw caption
     st.subheader("③ Raw Caption")
     st.text_area("Caption from Instagram", value=cur["caption"], height=100, disabled=True)
 
     st.divider()
 
-    # Credits (editable)
     st.subheader("④ Credits (auto-detected, editable)")
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -150,7 +142,6 @@ if st.session_state.stage in ("uploaded", "generated"):
 
     st.divider()
 
-    # Title + Board + Sector
     st.subheader("⑤ Pin Details")
     col_a, col_b, col_c = st.columns([2, 2, 2])
     with col_a:
@@ -160,7 +151,6 @@ if st.session_state.stage in ("uploaded", "generated"):
             help="Leave blank to use Brand Name. Final title = [name] Logo Animation"
         )
         pin_title = f"{custom_name or cur.get('brand_name', 'Logo')} Logo Animation"
-        # Format: {Nama} Logo Animation
         st.caption(f"→ **{pin_title}**")
         cur["custom_name"] = custom_name
     with col_b:
@@ -170,11 +160,9 @@ if st.session_state.stage in ("uploaded", "generated"):
     with col_c:
         sector = st.selectbox("Sector (optional)", SECTORS,
                                index=SECTORS.index(cur.get("sector", "")) if cur.get("sector", "") in SECTORS else 0,
-                               help="Enriches SEO keywords only. Not required.")
+                               help="Enriches SEO keywords. Not required.")
         cur["sector"] = sector
 
-
-    # Generate / Regenerate
     gen_label = "🔄 Regenerate" if st.session_state.stage == "generated" else "✨ Generate Description & Keywords"
     if st.button(gen_label, type="primary"):
         with st.spinner("Generating SEO content..."):
@@ -197,7 +185,6 @@ if st.session_state.stage in ("uploaded", "generated"):
             except Exception as e:
                 st.error(f"❌ {e}")
 
-    # Show generated result (editable)
     if st.session_state.stage == "generated" and cur.get("description"):
         st.divider()
         st.subheader("⑥ Generated Content (editable)")
@@ -233,23 +220,17 @@ if st.session_state.pins:
     st.subheader(f"📋 Queue — {len(st.session_state.pins)} pin(s)")
 
     df = pd.DataFrame(st.session_state.pins, columns=CSV_COLUMNS)
-    edited_df = st.data_editor(
+
+    # Replace data_editor with st.table + manual edit via expander to avoid segfault
+    st.dataframe(
         df,
-        use_container_width=True,
-        num_rows="dynamic",
+        width=1400,
         column_config={
-            "Video URL": st.column_config.TextColumn(width="medium"),
             "Description": st.column_config.TextColumn(width="large"),
             "Keywords": st.column_config.TextColumn(width="large"),
-            "Publish date": st.column_config.TextColumn(width="medium"),
         },
-        key="csv_editor",
     )
-    # Always sync edits back immediately
-    if edited_df is not None:
-        st.session_state.pins = edited_df.fillna("").to_dict("records")
 
-    # Schedule + Export
     st.divider()
     st.subheader("📅 Export CSV")
 
@@ -262,6 +243,9 @@ if st.session_state.pins:
             sched_start = st.date_input("Start date", value=date.today() + timedelta(days=1))
         with col2:
             sched_end = st.date_input("End date", value=date.today() + timedelta(days=14))
+    else:
+        sched_start = date.today() + timedelta(days=1)
+        sched_end = date.today() + timedelta(days=14)
 
     col_exp, col_clr = st.columns([3, 1])
     with col_exp:
@@ -296,8 +280,8 @@ if st.session_state.pins:
                     st.session_state["csv_filename"] = fname
                     st.session_state.pins = export
                     st.rerun()
-            except ValueError as e:
-                st.error(f"❌ {e}")
+            except Exception as e:
+                st.error(f"❌ Export error: {e}")
 
         if "csv_ready" in st.session_state:
             col_dl, col_pin = st.columns([1, 1])
