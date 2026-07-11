@@ -75,7 +75,13 @@ if ig_url and st.button("🔽 Fetch & Upload to Dropbox", type="primary"):
 
     with st.spinner("Uploading to Dropbox..."):
         try:
-            video_url = upload_and_get_link(video_path, DROPBOX_FOLDER, DROPBOX_TOKEN)
+            video_url = upload_and_get_link(
+                                video_path, DROPBOX_FOLDER,
+                                token=DROPBOX_TOKEN,
+                                app_key=DROPBOX_APP_KEY,
+                                app_secret=DROPBOX_APP_SECRET,
+                                refresh_token=DROPBOX_REFRESH_TOKEN,
+                            )
         except Exception as e:
             st.error(f"❌ Dropbox upload failed: {e}")
             st.stop()
