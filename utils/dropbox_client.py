@@ -2,19 +2,34 @@ import dropbox
 import os
 
 
-def upload_and_get_link(local_path: str, dropbox_folder: str, token: str = "",
-                         app_key: str = "", app_secret: str = "", refresh_token: str = "") -> str:
-    # Use refresh token if available (permanent), else fall back to access token
+def _get_client(token: str = "", app_key: str = "", app_secret: str = "", refresh_token: str = "") -> dropbox.Dropbox:
     if refresh_token and app_key and app_secret:
-        dbx = dropbox.Dropbox(
+        return dropbox.Dropbox(
             oauth2_refresh_token=refresh_token,
             app_key=app_key,
             app_secret=app_secret,
         )
     elif token:
-        dbx = dropbox.Dropbox(token)
-    else:
-        raise RuntimeError("No valid Dropbox credentials. Set DROPBOX_REFRESH_TOKEN + DROPBOX_APP_KEY + DROPBOX_APP_SECRET in secrets.")
+        return dropbox.Dropbox(token)
+    raise RuntimeError("No valid Dropbox credentials.")
+
+
+def upload_csv(csv_bytes: bytes, filename: str, dropbox_folder: str,
+               token: str = "", app_key: str = "", app_secret: str = "", refresh_token: str = "") -> str:
+    """Upload CSV bytes to Dropbox and return the dropbox path."""
+    dbx = _get_client(token, app_key, app_secret, refresh_token)
+
+    dropbox_path = f"{dropbox_folder.rstrip('/')}/{filename}"
+    if not dropbox_path.startswith("/"):
+        dropbox_path = "/" + dropbox_path
+
+    dbx.files_upload(csv_bytes, dropbox_path, mode=dropbox.files.WriteMode.overwrite)
+    return dropbox_path
+
+
+def upload_and_get_link(local_path: str, dropbox_folder: str, token: str = "",
+                         app_key: str = "", app_secret: str = "", refresh_token: str = "") -> str:
+    dbx = _get_client(token, app_key, app_secret, refresh_token)
 
     filename = os.path.basename(local_path)
     dropbox_path = f"{dropbox_folder.rstrip('/')}/{filename}"
