@@ -125,6 +125,7 @@ if ig_url and st.button("🔽 Fetch & Upload to Dropbox", type="primary"):
         "video_url": video_url,
         "caption": meta.get("description", ""),
         "uploader_id": meta.get("uploader_id", ""),
+        "duration": int(meta.get("duration") or 15),
         **credits,
     }
     st.session_state.stage = "uploaded"
@@ -143,11 +144,30 @@ if st.session_state.stage in ("uploaded", "generated"):
         st.subheader("② Preview")
         st.markdown("<style>video { max-height: 300px; }</style>", unsafe_allow_html=True)
         st.video(cur["video_url"])
+        st.link_button("🎬 Open video in browser (Safari fallback)", url=cur["video_url"])
     with col_thumb:
         st.subheader("Thumbnail timestamp")
-        thumbnail = st.text_input("Timestamp (e.g. 0:04)", value=cur.get("thumbnail", "0:04"), key="thumb_input")
+        duration = cur.get("duration", 15)
+
+        # Generate up to 8 options starting from 0:02
+        max_sec = max(int(duration), 3)  # at least up to 0:03
+        start = 2
+        end = min(start + 8, max_sec + 1)  # max 8 options
+        options = [f"0:0{s}" if s < 10 else f"0:{s}" for s in range(start, end)]
+
+        prev_thumb = cur.get("thumbnail", options[min(2, len(options)-1)])
+        default_idx = options.index(prev_thumb) if prev_thumb in options else 0
+
+        thumbnail = st.radio(
+            "Select thumbnail second",
+            options,
+            index=default_idx,
+            key="thumb_second",
+            horizontal=True,
+        )
+
         cur["thumbnail"] = thumbnail
-        st.caption("Set the frame used as pin thumbnail")
+        st.caption(f"Selected: **{thumbnail}** | Video duration: {duration}s")
 
     st.divider()
 
