@@ -131,7 +131,7 @@ ORIGINAL CAPTION: {caption[:300]}
 
 Generate:
 - "keywords": comma-separated, max 20 highly relevant SEO keywords. Mix broad (logo animation, motion graphics) and specific (brand name, animation style{sector_kw}). No hashtags.
-- "seo_body": 2 sentences of natural SEO text about this specific animation. Mention motion style, brand energy, visual quality.{sector_seo} Max 200 chars total. Do NOT repeat the pin title or brand name at the start. IMPORTANT: this is 2D logo animation — never mention 3D, three-dimensional, or 3D design.
+- "seo_body": 2 sentences of natural SEO text about this specific animation. Mention motion style, brand energy, visual quality.{sector_seo} Max 200 chars total. Do NOT repeat the pin title or brand name at the start. IMPORTANT: never mention 3D, three-dimensional, or 3D design.
 
 Description format (for your reference only, do not include in output):
 Line 1: {credit_line}
