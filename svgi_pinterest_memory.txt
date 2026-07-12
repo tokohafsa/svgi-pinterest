@@ -1,5 +1,5 @@
 SVGI PINTEREST PIPELINE — MEMORY FILE
-Generated: 2026-07-11 (updated v4)
+Generated: 2026-07-12 (updated v5)
 ======================================
 
 ## AKUN
@@ -9,7 +9,7 @@ Generated: 2026-07-11 (updated v4)
 
 ## TUJUAN APP
 Automate pipeline dari Instagram → Dropbox → Pinterest CSV bulk upload
-Monetisasi via Fiverr affiliate link (belum diisi, pending setup)
+Monetisasi via affiliate link (pending — Fiverr restrict Indonesia, sedang explore opsi lain)
 
 ## STACK
 - Framework: Streamlit (deployed ke Streamlit Cloud)
@@ -40,7 +40,7 @@ svgi-pinterest/
 2. Fetch metadata (yt-dlp) + download video + upload ke folder session Dropbox
 3. Preview video (dari Dropbox link) — max height 300px, 50% width
    + fallback link button untuk Safari/iPadOS
-4. Set thumbnail timestamp (e.g. 0:04)
+4. Thumbnail selector: radio 8 pilihan mulai 0:02, dibatasi durasi video asli
 5. Raw caption ditampilkan (read-only)
 6. Credits auto-detect dari caption (editable): client, animator, logo_maker
 7. Input pin name opsional + pilih Board + pilih Sektor (opsional, untuk SEO)
@@ -61,16 +61,26 @@ svgi-pinterest/
 Suffix waktu _HHMM mencegah collision jika 2 session di hari sama.
 New Session = reset queue + folder baru. Video lama tidak terhapus.
 
+## THUMBNAIL SELECTOR
+- Radio horizontal, 8 pilihan maksimal
+- Mulai dari 0:02
+- Dibatasi durasi video dari metadata yt-dlp
+- Jika durasi tidak terdeteksi → fallback max 30 detik
+- Default terpilih index ke-2 (0:04)
+
 ## FORMAT TITLE
 {Nama} Logo Animation. {CTA}
 Contoh: "Nude Logo Animation. Link in bio 🔗 to get a custom animated logo today!"
 
 ## FORMAT DESCRIPTION
 {credit_line}
-{2-3 kalimat SEO natural tentang animasi — selalu 2D, tidak pernah sebut 3D}
+{2-3 kalimat SEO natural tentang animasi}
 {CTA-2 berbeda dari CTA title}
 
-Catatan: Title TIDAK diulang di baris pertama description
+Catatan:
+- Title TIDAK diulang di baris pertama description
+- Jangan sebut 3D, three-dimensional, atau 3D design di description
+- Jangan substitusi dengan 2D — cukup tidak disebut sama sekali
 
 ## CREDIT LINE FORMAT
 - animator: SELALU = uploader_id (akun yang posting di IG)
@@ -138,7 +148,7 @@ Mudah & Cepat:
 - Permission: Scoped App (App Folder)
 - App name: SVGI Pinterest
 - App Folder path: /Apps/SVGI Pinterest/
-- DROPBOX_FOLDER = "/" di secrets (base folder, session subfolder dibuat dinamis)
+- DROPBOX_FOLDER = "/" di secrets (base, session subfolder dibuat dinamis)
 - Auth: OAuth2 Refresh Token (permanent, tidak expired)
 - App key: l1c50p00605pykv
 - Shared link format: dl.dropboxusercontent.com dengan ?dl=1
@@ -153,13 +163,22 @@ DROPBOX_APP_KEY = "l1c50p00605pykv"
 DROPBOX_APP_SECRET = "..."
 DROPBOX_REFRESH_TOKEN = "..."
 DROPBOX_FOLDER = "/"
-AFFILIATE_LINK = ""   # isi setelah Fiverr affiliate siap
+AFFILIATE_LINK = ""   # isi setelah affiliate siap
 
-## AFFILIATE STRATEGY
-- Platform: Fiverr (pending — belum daftar affiliate)
-- Cookie-based 30 hari — tidak perlu deep link per gig
-- Jika AFFILIATE_LINK kosong → otomatis pakai URL post IG original
-- Rencana test awal: 10 pin dengan link sama
+## AFFILIATE STATUS
+- Fiverr direct: tidak direspon
+- Fiverr via Awin: ada tapi region Indonesia tidak listed → applied, pending
+- Fiverr via Impact: tidak ada
+- PeoplePerHour via Awin: belum dicoba
+- 99designs via ShareASale: belum dicoba
+- Involve.asia: tidak ada Fiverr
+- Payoneer: akun ditutup, annual fee $29.95 dianggap besar
+- Awin payment: hanya Payoneer atau ACH (bank US) — barrier untuk Indonesia
+- Status: pending approval Fiverr di Awin, sambil explore opsi lain
+
+## PINTEREST BIO (terkini)
+"Logo animations from talented creators around the world.
+Want yours animated? Check the link 🔗"
 
 ## DEPLOYMENT
 - GitHub repo: public (required untuk Streamlit Cloud free tier)
@@ -176,6 +195,7 @@ AFFILIATE_LINK = ""   # isi setelah Fiverr affiliate siap
 - Variable 'col' conflict di dict comprehension → diganti jadi 'c'
 - gemini-1.5-flash deprecated → migrated ke Groq llama-3.3-70b-versatile
 - Dropbox App Folder token tidak bisa akses root → gunakan DROPBOX_FOLDER="/"
-- Model generate 3D dalam deskripsi → CTA "3D" dihapus + instruksi eksplisit di prompt
+- Model generate 3D dalam deskripsi → CTA "3D" dihapus + instruksi di prompt "never mention 3D" (bukan disubstitusi 2D)
 - Preview video tidak muncul di Safari iPadOS → tambah link_button fallback
-- csv_ready vs csv_uploaded_path naming conflict di clear queue → difix konsisten
+- csv_ready vs csv_uploaded_path naming conflict → difix konsisten
+- Thumbnail selector: dari text input → radio 8 pilihan mulai 0:02 dinamis per durasi video
