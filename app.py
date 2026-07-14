@@ -149,28 +149,30 @@ if st.session_state.stage in ("uploaded", "generated"):
 
     st.divider()
 
-    col_vid, col_thumb = st.columns([1, 1])
-    with col_vid:
-        st.subheader("② Preview")
-        st.markdown("<style>video { max-height: 300px; }</style>", unsafe_allow_html=True)
+    # ── Preview ──────────────────────────────────────────────────────────────
+    st.subheader("② Preview")
+    st.markdown("<style>video { max-height: 280px; }</style>", unsafe_allow_html=True)
+    col_v, _ = st.columns([1, 2])
+    with col_v:
         st.video(cur["video_url"])
-        st.link_button("🎬 Open video in browser (Safari fallback)", url=cur["video_url"])
-    with col_thumb:
-        st.subheader("Thumbnail timestamp")
-        duration = cur.get("duration", 15)
+        st.link_button("🎬 Open in browser (Safari)", url=cur["video_url"])
 
-        # Generate up to 8 options starting from 0:02
-        frames = cur.get("frames", {})
-        thumb_secs = cur.get("thumb_secs", [])
-        selected_ts = cur.get("thumbnail", format_timestamp(thumb_secs[2]) if len(thumb_secs) > 2 else "0:04")
+    st.divider()
 
-        if frames and len(frames) > 0:
-            st.caption("Click a frame to select thumbnail:")
-            n = len(thumb_secs)
-            cols = st.columns(n)
-            for i, sec in enumerate(thumb_secs):
-                if sec not in frames:
-                    continue
+    # ── Thumbnail grid ────────────────────────────────────────────────────────
+    st.subheader("Thumbnail timestamp")
+    frames = cur.get("frames", {})
+    thumb_secs = cur.get("thumb_secs", [])
+    selected_ts = cur.get("thumbnail", format_timestamp(thumb_secs[2]) if len(thumb_secs) > 2 else "0:04")
+
+    if frames and len(frames) > 0:
+        st.caption("Click a frame to select thumbnail:")
+        COLS_PER_ROW = 4
+        secs_list = [s for s in thumb_secs if s in frames]
+        for row_start in range(0, len(secs_list), COLS_PER_ROW):
+            row_secs = secs_list[row_start:row_start + COLS_PER_ROW]
+            cols = st.columns(COLS_PER_ROW)
+            for i, sec in enumerate(row_secs):
                 ts = format_timestamp(sec)
                 is_selected = (ts == selected_ts)
                 border_color = "#E03C31" if is_selected else "#cccccc"
@@ -185,19 +187,19 @@ if st.session_state.stage in ("uploaded", "generated"):
                     if st.button(ts, key=f"tb_{sec}", use_container_width=True):
                         cur["thumbnail"] = ts
                         st.rerun()
-            st.caption(f"✅ Selected: **{selected_ts}**")
-        else:
-            st.caption("⚠️ Frame preview unavailable — select manually:")
-            duration = cur.get("duration", 15)
-            max_sec = min(int(duration), 30)
-            opts = [format_timestamp(s) for s in range(2, min(max_sec + 1, 11))]
-            if not opts:
-                opts = ["0:02", "0:03", "0:04", "0:05"]
-            prev = cur.get("thumbnail", opts[min(2, len(opts)-1)])
-            idx = opts.index(prev) if prev in opts else 0
-            thumbnail = st.radio("Select second", opts, index=idx, horizontal=True, key="thumb_radio")
-            cur["thumbnail"] = thumbnail
-            selected_ts = thumbnail
+        st.caption(f"✅ Selected: **{selected_ts}**")
+    else:
+        st.caption("⚠️ Frame preview unavailable — select manually:")
+        duration = cur.get("duration", 15)
+        max_sec = min(int(duration), 30)
+        opts = [format_timestamp(s) for s in range(2, max_sec + 1)]
+        if not opts:
+            opts = ["0:02", "0:03", "0:04", "0:05"]
+        prev = cur.get("thumbnail", opts[min(2, len(opts)-1)])
+        idx = opts.index(prev) if prev in opts else 0
+        thumbnail = st.radio("Select second", opts, index=idx, horizontal=True, key="thumb_radio")
+        cur["thumbnail"] = thumbnail
+        selected_ts = thumbnail
 
     st.divider()
 
