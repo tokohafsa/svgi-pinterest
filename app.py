@@ -291,7 +291,7 @@ if st.session_state.stage in ("uploaded", "generated"):
             })
             st.session_state.cta_counter += 1
             st.session_state.stage = "input"
-            st.session_state.current = {}
+            st.session_state.current = {"frames": {}, "thumb_secs": []}
             st.success(f"✅ Pin added! Total: {len(st.session_state.pins)}")
             st.rerun()
 
