@@ -279,7 +279,7 @@ if st.session_state.stage in ("uploaded", "generated"):
                 "Title": cur["title"],
                 "Video URL": cur["video_url"],
                 "Pinterest board": cur["board"],
-                "Thumbnail": cur["thumbnail"],
+                "Thumbnail": cur.get("thumbnail", "0:04"),
                 "Description": cur["description"],
                 "Link": link_field,
                 "Publish date": "",
