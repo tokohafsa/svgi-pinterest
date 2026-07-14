@@ -86,6 +86,10 @@ ig_url = st.text_input("Paste Instagram post / reel URL",
                         key="ig_url_input")
 
 if ig_url and st.button("🔽 Fetch & Upload to Dropbox", type="primary"):
+    # Clear previous pin data immediately to prevent stale frames showing
+    st.session_state.current = {}
+    st.session_state.stage = "input"
+
     with st.spinner("Fetching metadata from Instagram..."):
         try:
             meta = fetch_ig_metadata(ig_url)
