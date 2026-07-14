@@ -160,24 +160,44 @@ if st.session_state.stage in ("uploaded", "generated"):
         duration = cur.get("duration", 15)
 
         # Generate up to 8 options starting from 0:02
-        max_sec = max(int(duration), 3)  # at least up to 0:03
-        start = 2
-        end = min(start + 8, max_sec + 1)  # max 8 options
-        options = [f"0:0{s}" if s < 10 else f"0:{s}" for s in range(start, end)]
+        frames = cur.get("frames", {})
+        thumb_secs = cur.get("thumb_secs", [])
+        selected_ts = cur.get("thumbnail", format_timestamp(thumb_secs[2]) if len(thumb_secs) > 2 else "0:04")
 
-        prev_thumb = cur.get("thumbnail", options[min(2, len(options)-1)])
-        default_idx = options.index(prev_thumb) if prev_thumb in options else 0
-
-        thumbnail = st.radio(
-            "Select thumbnail second",
-            options,
-            index=default_idx,
-            key="thumb_second",
-            horizontal=True,
-        )
-
-        cur["thumbnail"] = thumbnail
-        st.caption(f"Selected: **{thumbnail}** | Video duration: {duration}s")
+        if frames and len(frames) > 0:
+            st.caption("Click a frame to select thumbnail:")
+            n = len(thumb_secs)
+            cols = st.columns(n)
+            for i, sec in enumerate(thumb_secs):
+                if sec not in frames:
+                    continue
+                ts = format_timestamp(sec)
+                is_selected = (ts == selected_ts)
+                border_color = "#E03C31" if is_selected else "#cccccc"
+                with cols[i]:
+                    st.markdown(
+                        f'<div style="text-align:center">' +
+                        f'<img src="data:image/jpeg;base64,{frames[sec]}" ' +
+                        f'style="width:100%;border-radius:4px;border:3px solid {border_color}"/>' +
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+                    if st.button(ts, key=f"tb_{sec}", use_container_width=True):
+                        cur["thumbnail"] = ts
+                        st.rerun()
+            st.caption(f"✅ Selected: **{selected_ts}**")
+        else:
+            st.caption("⚠️ Frame preview unavailable — select manually:")
+            duration = cur.get("duration", 15)
+            max_sec = min(int(duration), 30)
+            opts = [format_timestamp(s) for s in range(2, min(max_sec + 1, 11))]
+            if not opts:
+                opts = ["0:02", "0:03", "0:04", "0:05"]
+            prev = cur.get("thumbnail", opts[min(2, len(opts)-1)])
+            idx = opts.index(prev) if prev in opts else 0
+            thumbnail = st.radio("Select second", opts, index=idx, horizontal=True, key="thumb_radio")
+            cur["thumbnail"] = thumbnail
+            selected_ts = thumbnail
 
     st.divider()
 
