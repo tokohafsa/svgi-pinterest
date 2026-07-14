@@ -9,6 +9,7 @@ from utils.instagram import fetch_ig_metadata, download_ig_video
 from utils.dropbox_client import upload_and_get_link, upload_csv
 from utils.model import detect_credits, generate_content, SECTORS
 from utils.scheduler import generate_schedule
+from utils.thumbnail import extract_frames, format_timestamp
 
 st.set_page_config(page_title="SVGI Pinterest Tool", page_icon="🎬", layout="wide")
 
@@ -120,12 +121,21 @@ if ig_url and st.button("🔽 Fetch & Upload to Dropbox", type="primary"):
             api_key=GROQ_KEY,
         )
 
+    duration = int(meta.get("duration") or 15)
+    max_sec = min(duration, 30)
+    thumb_secs = list(range(2, min(max_sec + 1, 11)))[:8]  # max 8 frames
+
+    with st.spinner("Extracting thumbnail previews..."):
+        frames = extract_frames(video_path, thumb_secs)
+
     st.session_state.current = {
         "ig_url": ig_url,
         "video_url": video_url,
         "caption": meta.get("description", ""),
         "uploader_id": meta.get("uploader_id", ""),
-        "duration": int(meta.get("duration") or 15),
+        "duration": duration,
+        "frames": frames,
+        "thumb_secs": thumb_secs,
         **credits,
     }
     st.session_state.stage = "uploaded"

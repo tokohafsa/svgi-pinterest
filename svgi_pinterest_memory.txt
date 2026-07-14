@@ -1,5 +1,5 @@
 SVGI PINTEREST PIPELINE — MEMORY FILE
-Generated: 2026-07-12 (updated v5)
+Generated: 2026-07-12 (updated v6)
 ======================================
 
 ## AKUN
@@ -15,6 +15,7 @@ Monetisasi via affiliate link (pending — Fiverr restrict Indonesia, sedang exp
 - Framework: Streamlit (deployed ke Streamlit Cloud)
 - AI/Model: Groq API (llama-3.3-70b-versatile)
 - Video fetch: yt-dlp
+- Frame extraction: imageio-ffmpeg (bundle binary, berjalan di Streamlit Cloud)
 - Storage: Dropbox API (App Folder: /Apps/SVGI Pinterest/)
 - Output: CSV + video otomatis tersimpan ke folder session di Dropbox
 
@@ -32,24 +33,37 @@ svgi-pinterest/
     ├── instagram.py              ← yt-dlp fetch metadata + download video
     ├── dropbox_client.py         ← upload video + upload CSV ke Dropbox
     ├── model.py                  ← Groq: detect credits + generate SEO content
-    └── scheduler.py              ← randomize publish dates dalam rentang waktu
+    ├── scheduler.py              ← randomize publish dates dalam rentang waktu
+    └── thumbnail.py              ← ffmpeg extract frames → base64 jpeg
 
 ## PIPELINE FLOW (per session)
 0. Klik New Session → buat folder Dropbox: /2026-07-11_1430
 1. Paste URL Instagram reel/post
-2. Fetch metadata (yt-dlp) + download video + upload ke folder session Dropbox
-3. Preview video (dari Dropbox link) — max height 300px, 50% width
+2. Fetch metadata (yt-dlp) + download video
+3. Upload video ke folder session Dropbox
+4. Extract 8 frame thumbnail (ffmpeg) dari file lokal sebelum dihapus
+5. Preview video (dari Dropbox link) — max height 300px, 50% width
    + fallback link button untuk Safari/iPadOS
-4. Thumbnail selector: radio 8 pilihan mulai 0:02, dibatasi durasi video asli
-5. Raw caption ditampilkan (read-only)
-6. Credits auto-detect dari caption (editable): client, animator, logo_maker
-7. Input pin name opsional + pilih Board + pilih Sektor (opsional, untuk SEO)
-8. Generate → review/edit Title, Description, Keywords
-9. Regenerate jika perlu
-10. Add to Queue
-11. Loop ke step 1 untuk URL baru
-12. Export CSV → tersimpan ke folder session yang sama
-13. Klik tombol Upload to Pinterest → buka Pinterest bulk upload
+6. Thumbnail grid: 8 frame ditampilkan, klik untuk pilih → border merah tanda terpilih
+   Fallback ke radio button jika ffmpeg gagal
+7. Raw caption ditampilkan (read-only)
+8. Credits auto-detect dari caption (editable): client, animator, logo_maker
+9. Input pin name opsional + pilih Board + pilih Sektor (opsional, untuk SEO)
+10. Generate → review/edit Title, Description, Keywords
+11. Regenerate jika perlu
+12. Add to Queue
+13. Loop ke step 1 untuk URL baru
+14. Export CSV → tersimpan ke folder session yang sama
+15. Klik tombol Upload to Pinterest → buka Pinterest bulk upload
+
+## THUMBNAIL GRID
+- 8 frame diekstrak mulai detik 0:02
+- Dibatasi durasi video asli dari metadata yt-dlp
+- Scale: 240px width, rasio terjaga
+- Klik gambar atau tombol timestamp di bawahnya untuk pilih
+- Frame dipilih: border merah #E03C31
+- Diekstrak dari file lokal (sebelum upload Dropbox) — tidak download ulang
+- Fallback radio button jika ffmpeg gagal extract
 
 ## STRUKTUR FOLDER DROPBOX PER SESSION
 /Apps/SVGI Pinterest/
@@ -60,13 +74,6 @@ svgi-pinterest/
 
 Suffix waktu _HHMM mencegah collision jika 2 session di hari sama.
 New Session = reset queue + folder baru. Video lama tidak terhapus.
-
-## THUMBNAIL SELECTOR
-- Radio horizontal, 8 pilihan maksimal
-- Mulai dari 0:02
-- Dibatasi durasi video dari metadata yt-dlp
-- Jika durasi tidak terdeteksi → fallback max 30 detik
-- Default terpilih index ke-2 (0:04)
 
 ## FORMAT TITLE
 {Nama} Logo Animation. {CTA}
@@ -79,7 +86,7 @@ Contoh: "Nude Logo Animation. Link in bio 🔗 to get a custom animated logo tod
 
 Catatan:
 - Title TIDAK diulang di baris pertama description
-- Jangan sebut 3D, three-dimensional, atau 3D design di description
+- Jangan sebut 3D, three-dimensional → instruksi eksplisit di prompt
 - Jangan substitusi dengan 2D — cukup tidak disebut sama sekali
 
 ## CREDIT LINE FORMAT
@@ -119,7 +126,6 @@ Jam randomize antara 09:00 - 21:00, tidak ada collision
 ## SEKTOR (opsional, 33 pilihan)
 Mempengaruhi: keywords (tambah industry keyword) + satu kalimat di seo_body
 Contoh: "Photography & Film" → tambah "photography industry" di keywords
-        + "Ideal for photography & film brands..." di description
 
 ## CTA VARIANTS (14 rotasi otomatis per pin)
 Title dan description pakai CTA berbeda (index & index+1)
@@ -156,6 +162,15 @@ Mudah & Cepat:
   * upload_and_get_link() → untuk video, return direct link
   * upload_csv() → untuk CSV bulk, return dropbox path
 
+## REQUIREMENTS.TXT
+streamlit>=1.35.0
+yt-dlp>=2024.1.0
+dropbox>=11.36.0
+groq>=0.9.0
+pandas>=2.0.0
+requests>=2.31.0
+imageio-ffmpeg>=0.4.9
+
 ## STREAMLIT SECRETS (template)
 GROQ_API_KEY = "..."
 DROPBOX_TOKEN = ""
@@ -163,18 +178,16 @@ DROPBOX_APP_KEY = "l1c50p00605pykv"
 DROPBOX_APP_SECRET = "..."
 DROPBOX_REFRESH_TOKEN = "..."
 DROPBOX_FOLDER = "/"
-AFFILIATE_LINK = ""   # isi setelah affiliate siap
+AFFILIATE_LINK = ""
 
 ## AFFILIATE STATUS
 - Fiverr direct: tidak direspon
-- Fiverr via Awin: ada tapi region Indonesia tidak listed → applied, pending
+- Fiverr via Awin: applied, pending — Indonesia tidak di region list
 - Fiverr via Impact: tidak ada
-- PeoplePerHour via Awin: belum dicoba
-- 99designs via ShareASale: belum dicoba
 - Involve.asia: tidak ada Fiverr
-- Payoneer: akun ditutup, annual fee $29.95 dianggap besar
-- Awin payment: hanya Payoneer atau ACH (bank US) — barrier untuk Indonesia
-- Status: pending approval Fiverr di Awin, sambil explore opsi lain
+- Payoneer: akun ditutup, annual fee $29.95 barrier
+- Awin payment: hanya Payoneer atau ACH (bank US)
+- Status: pending, sambil fokus naikkan traffic dulu
 
 ## PINTEREST BIO (terkini)
 "Logo animations from talented creators around the world.
@@ -195,7 +208,7 @@ Want yours animated? Check the link 🔗"
 - Variable 'col' conflict di dict comprehension → diganti jadi 'c'
 - gemini-1.5-flash deprecated → migrated ke Groq llama-3.3-70b-versatile
 - Dropbox App Folder token tidak bisa akses root → gunakan DROPBOX_FOLDER="/"
-- Model generate 3D dalam deskripsi → CTA "3D" dihapus + instruksi di prompt "never mention 3D" (bukan disubstitusi 2D)
-- Preview video tidak muncul di Safari iPadOS → tambah link_button fallback
-- csv_ready vs csv_uploaded_path naming conflict → difix konsisten
-- Thumbnail selector: dari text input → radio 8 pilihan mulai 0:02 dinamis per durasi video
+- Model generate 3D → instruksi "never mention 3D" di prompt, bukan substitusi 2D
+- Preview video Safari iPadOS → tambah link_button fallback
+- csv naming conflict → difix konsisten ke csv_uploaded_path
+- Thumbnail: dari text input → radio → sekarang image grid via ffmpeg
