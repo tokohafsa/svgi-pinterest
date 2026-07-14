@@ -123,7 +123,7 @@ if ig_url and st.button("🔽 Fetch & Upload to Dropbox", type="primary"):
 
     duration = int(meta.get("duration") or 15)
     max_sec = min(duration, 30)
-    thumb_secs = list(range(2, min(max_sec + 1, 11)))[:8]  # max 8 frames
+    thumb_secs = list(range(2, max_sec + 1))  # all seconds from 2 to end
 
     with st.spinner("Extracting thumbnail previews..."):
         frames = extract_frames(video_path, thumb_secs)
