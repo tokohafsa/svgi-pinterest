@@ -1,4 +1,3 @@
-##FIX ke2
 import subprocess
 import os
 import base64
@@ -6,17 +5,27 @@ import tempfile
 import imageio_ffmpeg
 
 
-def extract_frames(video_path: str, seconds: list[int]) -> dict[int, str]:
+def extract_frames(video_path: str, seconds: list) -> dict:
     """
     Extract frames from video at specified seconds.
     Returns dict: {second: base64_jpeg_string}
+    Cleans ALL previous svgi_thumb_* files before extracting new ones.
     """
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     frames = {}
+    tmp_dir = tempfile.gettempdir()
+
+    # Clean ALL previous frames regardless of source video
+    for f in os.listdir(tmp_dir):
+        if f.startswith("svgi_thumb_"):
+            try:
+                os.remove(os.path.join(tmp_dir, f))
+            except Exception:
+                pass
 
     for sec in seconds:
-        out = os.path.join(tempfile.gettempdir(), f"thumb_{sec:02d}.jpg")
-        result = subprocess.run([
+        out = os.path.join(tmp_dir, f"svgi_thumb_{sec:03d}.jpg")
+        subprocess.run([
             ffmpeg, "-y",
             "-ss", str(sec),
             "-i", video_path,
