@@ -27,11 +27,33 @@ except Exception:
     st.error("⚠️ Secrets not configured. Edit .streamlit/secrets.toml")
     st.stop()
 
+def _clear_ig_fields():
+    """Hapus semua widget keys tab Instagram dari session_state."""
+    for k in [
+        "ig_url_input", "ig_brand", "ig_client", "ig_anim", "ig_logo",
+        "ig_pin_name", "ig_board", "ig_sector",
+        "ig_title", "ig_desc", "ig_kw",
+    ]:
+        if k in st.session_state:
+            del st.session_state[k]
+
+
+def _clear_direct_fields():
+    """Hapus semua widget keys tab Direct URL dari session_state."""
+    for k in [
+        "direct_url_input", "dt_pin_name", "dt_board", "dt_sector",
+        "dt_credit", "dt_link",
+        "dt_title", "dt_desc", "dt_kw",
+    ]:
+        if k in st.session_state:
+            del st.session_state[k]
+
+
 BOARDS = [
     "Logo Animations",
-    "Brand Identity in Motion",
     "E Sports Gaming Logo Animations",
     "Famous Brand Logo Animations",
+    "Brand Identity in Motion",
 ]
 
 CSV_COLUMNS = ["Title", "Video URL", "Pinterest board", "Thumbnail",
@@ -279,8 +301,7 @@ with tab_ig:
                 st.session_state.cta_counter += 1
                 st.session_state.stage = "input"
                 st.session_state.current = {"frames": {}, "thumb_secs": []}
-                if "ig_url_input" in st.session_state:
-                    del st.session_state["ig_url_input"]
+                _clear_ig_fields()
                 st.success(f"✅ Pin added! Total: {len(st.session_state.pins)}")
                 st.rerun()
 
@@ -450,7 +471,12 @@ with tab_direct:
                     desc = result.get("description", "")
                     if credit:
                         lines = desc.split("\n")
-                        lines[0] = credit
+                        credit_stripped = credit.strip()
+                        # Tambah prefix "Credit: " kalau belum ada
+                        if not credit_stripped.lower().startswith("credit:"):
+                            lines[0] = f"Credit: {credit_stripped}"
+                        else:
+                            lines[0] = credit_stripped
                         desc = "\n".join(lines)
                     result["description"] = desc
                     cur.update(result)
@@ -481,8 +507,7 @@ with tab_direct:
                 st.session_state.cta_counter += 1
                 st.session_state.stage_direct = "input"
                 st.session_state.current_direct = {"frames": {}, "thumb_secs": []}
-                if "direct_url_input" in st.session_state:
-                    del st.session_state["direct_url_input"]
+                _clear_direct_fields()
                 st.success(f"✅ Pin added! Total: {len(st.session_state.pins)}")
                 st.rerun()
 
