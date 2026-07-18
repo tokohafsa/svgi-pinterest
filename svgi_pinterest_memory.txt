@@ -1,5 +1,5 @@
 SVGI PINTEREST PIPELINE — MEMORY FILE
-Generated: 2026-07-14 (updated v8)
+Generated: 2026-07-14 (updated v9 — 2026-07-18)
 ======================================
 
 ## AKUN
@@ -54,7 +54,7 @@ Shared: queue, export CSV, session folder, scheduler
 4. Preview video (1/3 lebar) + thumbnail grid 4 per row
 5. Input pin name opsional + Board + Sektor
 6. Generate → edit → Regenerate
-7. Add to Queue → URL field clear otomatis
+7. Add to Queue → semua field clear otomatis (URL, brand, credits, title, desc, keywords)
 8. Loop
 
 ## PIPELINE FLOW — TAB 2 (Direct URL)
@@ -66,7 +66,7 @@ Shared: queue, export CSV, session folder, scheduler
 5. Input pin name (wajib) + Credit (bebas teks) + Link original (dinamis per pin)
 6. Board + Sektor dropdown
 7. Generate → edit → Regenerate
-8. Add to Queue → clear
+8. Add to Queue → semua field clear otomatis (URL, pin name, credit, link, title, desc, keywords)
 
 ## THUMBNAIL GRID
 - 8+ frame diekstrak mulai detik 0:02 sampai durasi penuh
@@ -90,7 +90,7 @@ Shared: queue, export CSV, session folder, scheduler
 1. Logo Animations
 2. E Sports Gaming Logo Animations
 3. Famous Brand Logo Animations
-4. Brand Identity in Motion ← board baru
+4. Brand Identity in Motion
 
 ## BOARD DESKRIPSI PINTEREST
 Logo Animations:
@@ -119,7 +119,7 @@ Brand Identity in Motion:
 
 ## FORMAT TITLE
 {Nama} {Suffix}. {CTA front-loaded}
-Contoh: "Nike Animated Brand Identity. Bio link connects you with designers who can bring your logo to life 🎬"
+Contoh: "Cleveland Gaming Classic Animated Brand Identity. Bio link connects you with designers who can bring your logo to life 🎬"
 
 CTA di depan kalimat kedua agar tidak truncated oleh Pinterest
 
@@ -131,8 +131,11 @@ CTA di depan kalimat kedua agar tidak truncated oleh Pinterest
 Catatan:
 - Title tidak diulang di description
 - Tidak sebut 3D/three-dimensional
-- Credit Tab 1: auto-detect dari caption (editable)
-- Credit Tab 2: bebas teks manual
+- Credit Tab 1: auto-detect dari caption (editable), format: "Credit: @username on Instagram"
+- Credit Tab 2: bebas teks manual, otomatis diberi prefix "Credit: " jika belum ada
+  → user ketik "@username" → tersimpan sebagai "Credit: @username"
+  → user ketik "Credit: @username" → tidak dobel, tetap "Credit: @username"
+  → user ketik "Motion by @x | Logo by @y" → "Credit: Motion by @x | Logo by @y"
 
 ## CTA VARIANTS (14 — soft selling, front-loaded)
 - Inspired by this? Our bio link connects you with the right motion designer 🔗
@@ -199,3 +202,15 @@ Want yours animated? Check the link 🔗"
 - Layout preview side-by-side → rewrite section langsung
 - Thumbnail image grid → ffmpeg extract per detik
 - GIF support → download_direct + convert_to_mp4 via ffmpeg
+- StreamlitAPIException saat Add to Queue → tidak boleh assign langsung ke session_state
+  key yang aktif sebagai widget key (ig_url_input / direct_url_input)
+  → fix: gunakan del st.session_state[key] bukan assignment langsung
+- Field tidak clear setelah Add to Queue → tambah helper _clear_ig_fields() dan
+  _clear_direct_fields() yang hapus semua widget keys (URL, pin name, board, sector,
+  credit, link, title, desc, keywords) sebelum st.rerun()
+  → urutan aman: pins.append() dulu → clear fields → rerun
+- Tab Non-IG credit tanpa prefix "Credit: " → override lines[0] di description
+  sekarang otomatis tambah prefix jika belum ada, tidak dobel jika sudah ada
+- Board baru "Brand Identity in Motion" → sudah terdaftar di BOARDS list (app.py)
+  dan sudah ada entry di BOARD_TITLE_SUFFIX, BOARDS_KEYWORD_CONTEXT, BOARD_SEO_TONE
+  di model.py → tidak perlu perubahan model.py
