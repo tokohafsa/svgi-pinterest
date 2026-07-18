@@ -544,13 +544,9 @@ if st.session_state.pins:
     use_schedule = st.toggle("Enable scheduling", value=False,
                               help="OFF = Publish date kosong. ON = randomize dalam rentang tanggal.")
     if use_schedule:
-        col1, col2 = st.columns(2)
-        with col1:
-            sched_start = st.date_input("Start date", value=date.today() + timedelta(days=1))
-        with col2:
-            sched_end = st.date_input("End date", value=date.today() + timedelta(days=14))
+        sched_end = st.date_input("Publish until (end date)", value=date.today() + timedelta(days=14))
+        st.caption("Pins will be spread evenly from now+2h until the end date.")
     else:
-        sched_start = date.today() + timedelta(days=1)
         sched_end = date.today() + timedelta(days=14)
 
     # Detect if queue has NON-IG pins for naming
@@ -573,9 +569,8 @@ if st.session_state.pins:
                 else:
                     export = []
                     if use_schedule:
-                        start_dt = datetime.combine(sched_start, datetime.min.time())
                         end_dt = datetime.combine(sched_end, datetime.min.time())
-                        schedules = generate_schedule(start_dt, end_dt, len(pins_now))
+                        schedules = generate_schedule(end_dt, len(pins_now))
                         for i, pin in enumerate(pins_now):
                             p = {c: pin.get(c, "") for c in CSV_COLUMNS}
                             p["Publish date"] = schedules[i]
