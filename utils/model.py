@@ -10,7 +10,7 @@ SECTORS = [
     "Health & Medical", "Hotels & Hospitality", "Insurance",
     "Law & Legal Services", "Logistics & Shipping", "Luxury & Lifestyle",
     "Manufacturing & Industry", "Music & Audio", "NFT & Digital Art",
-    "Non-Profit & NGO", "Pets & Animals", "Photography & Film",
+    "Non-Profit & NGO", "Outdoor & Recreation", "Pets & Animals", "Photography & Film",
     "Religion & Spiritual", "Retail & E-Commerce", "Software & SaaS",
     "Sports & Fitness", "Technology & Electronics", "Telecommunications",
     "Travel & Tourism", "YouTube & Content Creation",
