@@ -278,7 +278,8 @@ with tab_ig:
                 st.session_state.cta_counter += 1
                 st.session_state.stage = "input"
                 st.session_state.current = {"frames": {}, "thumb_secs": []}
-                st.session_state.ig_url_input = ""
+                if "ig_url_input" in st.session_state:
+                    del st.session_state["ig_url_input"]
                 st.success(f"✅ Pin added! Total: {len(st.session_state.pins)}")
                 st.rerun()
 
@@ -479,7 +480,8 @@ with tab_direct:
                 st.session_state.cta_counter += 1
                 st.session_state.stage_direct = "input"
                 st.session_state.current_direct = {"frames": {}, "thumb_secs": []}
-                st.session_state.direct_url_input = ""
+                if "direct_url_input" in st.session_state:
+                    del st.session_state["direct_url_input"]
                 st.success(f"✅ Pin added! Total: {len(st.session_state.pins)}")
                 st.rerun()
 
