@@ -29,6 +29,7 @@ except Exception:
 
 BOARDS = [
     "Logo Animations",
+    "Brand Identity in Motion",
     "E Sports Gaming Logo Animations",
     "Famous Brand Logo Animations",
 ]
