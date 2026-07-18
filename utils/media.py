@@ -25,13 +25,13 @@ def download_direct(url: str, output_dir: str) -> str:
     return out_path
 
 
-def convert_to_mp4(input_path: str, output_dir: str) -> str:
+def convert_to_mp4(input_path: str, output_dir: str, output_name: str = "media_converted.mp4") -> str:
     """
     Convert GIF (or any format) to MP4 via ffmpeg.
     Returns path to mp4 file.
     """
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
-    out_path = os.path.join(output_dir, "media_converted.mp4")
+    out_path = os.path.join(output_dir, output_name)
 
     subprocess.run([
         ffmpeg, "-y",
