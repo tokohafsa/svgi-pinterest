@@ -20,23 +20,38 @@ BOARDS_KEYWORD_CONTEXT = {
     "Logo Animations": "logo animation, motion graphics, brand animation, animated logo, logo reveal, motion design, brand identity, logo intro",
     "E Sports Gaming Logo Animations": "esports logo animation, gaming logo, esports branding, gaming motion graphics, esports team logo, gaming channel logo, streamer logo animation, esports identity",
     "Famous Brand Logo Animations": "famous brand logo, iconic brand animation, brand logo reveal, corporate logo animation, well-known brand motion, global brand identity, brand motion design",
+    "Brand Identity in Motion": "brand identity animation, animated brand identity, motion branding, brand in motion, visual identity system, kinetic branding, brand motion design, animated brand system",
+}
+
+BOARD_SEO_TONE = {
+    "Logo Animations": "Focus on animation quality, motion style, and logo reveal technique. Use words like: logo reveal, animated logo, motion design, logo intro, brand animation.",
+    "E Sports Gaming Logo Animations": "Focus on gaming energy, esports identity, and competitive branding. Use words like: esports logo, gaming clan, streamer intro, team identity, gaming motion.",
+    "Famous Brand Logo Animations": "Focus on iconic brand recognition, corporate identity, and global brand presence. Use words like: iconic brand, corporate logo, world-famous, brand reveal, global identity.",
+    "Brand Identity in Motion": "Focus on brand storytelling, visual identity systems, and how the brand communicates through motion. Do NOT focus on just the logo — talk about brand personality, visual language, and identity in motion. Use words like: brand identity, visual storytelling, motion branding, brand system, kinetic identity.",
+}
+
+BOARD_TITLE_SUFFIX = {
+    "Logo Animations": "Logo Animation",
+    "E Sports Gaming Logo Animations": "Logo Animation",
+    "Famous Brand Logo Animations": "Logo Animation",
+    "Brand Identity in Motion": "Animated Brand Identity",
 }
 
 CTA_VARIANTS = [
-    "Link in bio 🔗 to get a custom animated logo today!",
-    "Tap bio 👆 to order your professional logo animation.",
-    "Click bio 🖱️ to get your static logo animated now.",
-    "Visit bio 🚀 to start your logo animation process.",
-    "Go to bio 💼 to get your brand logo animated fast.",
-    "Go to bio ⚡ to bring your brand logo to life!",
-    "Bio link 📲 to bring your logo to life with motion graphics.",
-    "Check profile ✨ to upgrade your logo with motion graphics.",
-    "Visit profile 🎬 to make your static logo move beautifully.",
-    "Link in bio 💎 to turn your logo into an eye-catching animation.",
-    "Link in bio 🎯 to easily get your logo animated.",
-    "Tap bio ⚡ for a quick and professional logo animation.",
-    "Click bio 🤝 to get a high-quality animated logo without hassle.",
-    "Visit bio 🔥 to get your logo animated quickly and easily.",
+    "Inspired by this? Our bio link connects you with the right motion designer 🔗",
+    "Love this style? Find talented animators via the link in our bio ✨",
+    "Bio link has options if you want something like this for your brand 🎬",
+    "See bio link to explore logo animation services for your brand 🔗",
+    "Want this for your brand? Our bio link is a good starting point 💡",
+    "Curious about motion design? Check the bio link for where to start 🎯",
+    "Great motion design is closer than you think. Bio link has options 🔗",
+    "Find the right motion designer for your brand via our bio link ✨",
+    "Bio link connects you with designers who can bring your logo to life 🎬",
+    "Looking for motion design services? Start with the bio link 🔗",
+    "Your brand could move like this. Bio link has the right people 💡",
+    "Explore logo animation options for your brand via the bio link 🎯",
+    "Motion design for your brand starts here. Check the bio link 🔗",
+    "Bio link has everything you need to get your brand animated ✨",
 ]
 
 
@@ -120,7 +135,9 @@ def generate_content(
     sector_kw = f", {sector.lower()} industry" if sector else ""
     sector_seo = f" Ideal for {sector.lower()} brands looking to elevate their visual identity." if sector else ""
 
-    prompt = f"""You are a Pinterest SEO expert for logo animation content.
+    board_tone = BOARD_SEO_TONE.get(board, BOARD_SEO_TONE["Logo Animations"])
+
+    prompt = f"""You are a Pinterest SEO expert for motion design and brand identity content.
 Generate SEO-optimized Pinterest content. Return ONLY valid JSON, no markdown, no backticks.
 
 PIN TITLE: "{pin_title}"
@@ -129,9 +146,11 @@ BOARD: {board}
 KEYWORD CONTEXT: {keyword_context}{sector_ctx}
 ORIGINAL CAPTION: {caption[:300]}
 
+TONE INSTRUCTION FOR THIS BOARD: {board_tone}
+
 Generate:
-- "keywords": comma-separated, max 20 highly relevant SEO keywords. Mix broad (logo animation, motion graphics) and specific (brand name, animation style{sector_kw}). No hashtags.
-- "seo_body": 2 sentences of natural SEO text about this specific animation. Mention motion style, brand energy, visual quality.{sector_seo} Max 200 chars total. Do NOT repeat the pin title or brand name at the start. IMPORTANT: never mention 3D, three-dimensional, or 3D design.
+- "keywords": comma-separated, max 20 highly relevant SEO keywords. Mix broad and specific terms based on the board tone above{sector_kw}. No hashtags.
+- "seo_body": 2 sentences of natural SEO text. Follow the board tone instruction above.{sector_seo} Max 200 chars total. Do NOT repeat the pin title or brand name at the start. Never mention 3D, three-dimensional, or 3D design.
 
 Description format (for your reference only, do not include in output):
 Line 1: {credit_line}
