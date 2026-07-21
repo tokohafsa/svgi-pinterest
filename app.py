@@ -156,7 +156,7 @@ with tab_ig:
 
         duration = int(meta.get("duration") or 15)
         max_sec = min(duration, 30)
-        thumb_secs = list(range(2, max_sec + 1))
+        thumb_secs = list(range(1, max_sec + 1))
 
         with st.spinner("Extracting thumbnail previews..."):
             frames = extract_frames(video_path, thumb_secs)
@@ -189,7 +189,7 @@ with tab_ig:
         st.subheader("Thumbnail timestamp")
         frames = cur.get("frames", {})
         thumb_secs = cur.get("thumb_secs", [])
-        selected_ts = cur.get("thumbnail", format_timestamp(thumb_secs[2]) if len(thumb_secs) > 2 else "0:04")
+        selected_ts = cur.get("thumbnail", format_timestamp(thumb_secs[0]) if len(thumb_secs) > 0 else "0:01")
 
         if frames and len(frames) > 0:
             st.caption("Click a frame to select thumbnail:")
@@ -215,8 +215,8 @@ with tab_ig:
                             st.rerun()
             st.caption(f"✅ Selected: **{selected_ts}**")
         else:
-            opts = [format_timestamp(s) for s in range(2, min(cur.get("duration", 15) + 1, 31))] or ["0:02","0:03","0:04","0:05"]
-            prev = cur.get("thumbnail", opts[min(2, len(opts)-1)])
+            opts = [format_timestamp(s) for s in range(1, min(cur.get("duration", 15) + 1, 31))] or ["0:01","0:02","0:03","0:04"]
+            prev = cur.get("thumbnail", opts[0])
             thumbnail = st.radio("Select second", opts, index=opts.index(prev) if prev in opts else 0, horizontal=True, key="ig_thumb_radio")
             cur["thumbnail"] = thumbnail
 
@@ -371,7 +371,7 @@ with tab_direct:
         with st.spinner("Extracting thumbnail previews..."):
             duration = get_duration(video_path)
             max_sec = min(duration, 30)
-            thumb_secs = list(range(2, max_sec + 1))
+            thumb_secs = list(range(1, max_sec + 1))
             frames = extract_frames(video_path, thumb_secs)
 
         st.session_state.current_direct = {
@@ -400,7 +400,7 @@ with tab_direct:
         st.subheader("Thumbnail timestamp")
         frames = cur.get("frames", {})
         thumb_secs = cur.get("thumb_secs", [])
-        selected_ts = cur.get("thumbnail", format_timestamp(thumb_secs[2]) if len(thumb_secs) > 2 else "0:04")
+        selected_ts = cur.get("thumbnail", format_timestamp(thumb_secs[0]) if len(thumb_secs) > 0 else "0:01")
 
         if frames and len(frames) > 0:
             st.caption("Click a frame to select thumbnail:")
@@ -426,8 +426,8 @@ with tab_direct:
                             st.rerun()
             st.caption(f"✅ Selected: **{selected_ts}**")
         else:
-            opts = [format_timestamp(s) for s in range(2, min(cur.get("duration", 15) + 1, 31))] or ["0:02","0:03","0:04","0:05"]
-            prev = cur.get("thumbnail", opts[min(2, len(opts)-1)])
+            opts = [format_timestamp(s) for s in range(1, min(cur.get("duration", 15) + 1, 31))] or ["0:01","0:02","0:03","0:04"]
+            prev = cur.get("thumbnail", opts[0])
             thumbnail = st.radio("Select second", opts, index=opts.index(prev) if prev in opts else 0, horizontal=True, key="dt_thumb_radio")
             cur["thumbnail"] = thumbnail
 
