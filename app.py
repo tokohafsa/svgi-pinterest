@@ -561,17 +561,34 @@ if st.session_state.pins:
     st.session_state.pins = edited_df.to_dict("records")
 
     st.divider()
-    st.subheader("📅 Export CSV")
+    st.subheader("📅 Step 1 — Schedule & Generate CSV")
 
     use_schedule = st.toggle("Enable scheduling", value=False,
                               help="OFF = Publish date kosong. ON = randomize dalam rentang tanggal.")
     if use_schedule:
-        sched_end = st.date_input("Publish until (end date)", value=date.today() + timedelta(days=14))
-        st.caption("Pins will be spread evenly from now+2h until the end date.")
+        col_sd, col_ed = st.columns(2)
+        with col_sd:
+            sched_start = st.date_input(
+                "Publish from (start date)",
+                value=date.today(),
+                key="sched_start",
+                help="Hari ini = mulai dari sekarang + 2 jam. Besok atau lebih = mulai dari 02:00 pagi hari itu.",
+            )
+        with col_ed:
+            sched_end = st.date_input(
+                "Publish until (end date)",
+                value=date.today() + timedelta(days=14),
+                key="sched_end",
+            )
+        if sched_start <= date.today():
+            st.caption("⏰ Start: sekarang + 2 jam")
+        else:
+            st.caption(f"⏰ Start: {sched_start.strftime('%d %b %Y')} pukul 02:00")
     else:
+        sched_start = date.today()
         sched_end = date.today() + timedelta(days=14)
 
-    # Detect if queue has NON-IG pins for naming
+    # Detect prefix for CSV filename
     has_direct = any(not p.get("Link", "").startswith("https://www.instagram.com") for p in st.session_state.pins)
     has_ig = any(p.get("Link", "").startswith("https://www.instagram.com") for p in st.session_state.pins)
     if has_direct and has_ig:
@@ -583,7 +600,7 @@ if st.session_state.pins:
 
     col_exp, col_clr = st.columns([3, 1])
     with col_exp:
-        if st.button("📥 Export CSV", type="primary", key="export_btn"):
+        if st.button("📋 Generate CSV Preview", type="primary", key="export_btn"):
             try:
                 pins_now = st.session_state.pins
                 if not pins_now:
@@ -592,7 +609,11 @@ if st.session_state.pins:
                     export = []
                     if use_schedule:
                         end_dt = datetime.combine(sched_end, datetime.min.time())
-                        schedules = generate_schedule(end_dt, len(pins_now))
+                        schedules = generate_schedule(
+                            end_dt,
+                            len(pins_now),
+                            start_date=sched_start,
+                        )
                         for i, pin in enumerate(pins_now):
                             p = {c: pin.get(c, "") for c in CSV_COLUMNS}
                             p["Publish date"] = schedules[i]
@@ -603,40 +624,82 @@ if st.session_state.pins:
                             p["Publish date"] = ""
                             export.append(p)
 
-                    df_export = pd.DataFrame(export, columns=CSV_COLUMNS)
+                    folder_name = st.session_state.session_folder.strip("/")
+                    st.session_state["csv_preview"] = export
+                    st.session_state["csv_fname"] = f"{csv_prefix}_{folder_name}.csv"
+                    # Reset upload state supaya tombol Upload muncul fresh
+                    if "csv_uploaded_path" in st.session_state:
+                        del st.session_state["csv_uploaded_path"]
+                    st.rerun()
+            except Exception as e:
+                st.error(f"❌ Export error: {e}")
+
+    with col_clr:
+        if st.button("🗑️ Clear Queue", key="clr_btn"):
+            st.session_state.pins = []
+            for k in ["csv_preview", "csv_uploaded_path", "csv_fname"]:
+                if k in st.session_state:
+                    del st.session_state[k]
+            st.rerun()
+
+    # ── Step 2: Edit CSV preview ──────────────────────────────────────────────
+    if "csv_preview" in st.session_state and st.session_state["csv_preview"]:
+        st.divider()
+        st.subheader("✏️ Step 2 — Edit CSV")
+        st.caption("Edit langsung di tabel sebelum upload ke Dropbox.")
+
+        df_preview = pd.DataFrame(st.session_state["csv_preview"], columns=CSV_COLUMNS)
+        edited_csv_df = st.data_editor(
+            df_preview,
+            width=1400,
+            num_rows="fixed",
+            column_config={
+                "Title": st.column_config.TextColumn(width="medium"),
+                "Video URL": st.column_config.TextColumn(width="medium"),
+                "Pinterest board": st.column_config.SelectboxColumn(
+                    width="medium", options=BOARDS,
+                ),
+                "Thumbnail": st.column_config.TextColumn(width="small"),
+                "Description": st.column_config.TextColumn(width="large"),
+                "Link": st.column_config.TextColumn(width="medium"),
+                "Publish date": st.column_config.TextColumn(width="medium"),
+                "Keywords": st.column_config.TextColumn(width="large"),
+            },
+            key="csv_editor",
+        )
+        # Sync edits ke session_state csv_preview
+        st.session_state["csv_preview"] = edited_csv_df.to_dict("records")
+
+        st.divider()
+        st.subheader("☁️ Step 3 — Upload ke Dropbox")
+
+        col_up, col_fname = st.columns([1, 2])
+        with col_fname:
+            st.caption(f"📁 Filename: **{st.session_state['csv_fname']}**")
+        with col_up:
+            if st.button("⬆️ Upload CSV ke Dropbox", type="primary", key="upload_btn"):
+                try:
+                    final_data = st.session_state["csv_preview"]
+                    df_final = pd.DataFrame(final_data, columns=CSV_COLUMNS)
                     buf = io.StringIO()
-                    df_export.to_csv(buf, index=False)
+                    df_final.to_csv(buf, index=False)
                     csv_bytes = buf.getvalue().encode("utf-8")
 
-                    folder_name = st.session_state.session_folder.strip("/")
-                    fname = f"{csv_prefix}_{folder_name}.csv"
-
                     dropbox_path = upload_csv(
-                        csv_bytes, fname, st.session_state.session_folder,
+                        csv_bytes,
+                        st.session_state["csv_fname"],
+                        st.session_state.session_folder,
                         token=DROPBOX_TOKEN,
                         app_key=DROPBOX_APP_KEY,
                         app_secret=DROPBOX_APP_SECRET,
                         refresh_token=DROPBOX_REFRESH_TOKEN,
                     )
-
                     st.session_state["csv_uploaded_path"] = dropbox_path
-                    st.session_state["csv_fname"] = fname
-                    st.session_state.pins = export
                     st.rerun()
-            except Exception as e:
-                st.error(f"❌ Export error: {e}")
+                except Exception as e:
+                    st.error(f"❌ Upload error: {e}")
 
         if "csv_uploaded_path" in st.session_state:
             st.success(f"✅ CSV saved to Dropbox: `{st.session_state['csv_uploaded_path']}`")
-            col_dl, col_pin = st.columns([1, 1])
-            with col_dl:
-                st.info(f"📁 File: **{st.session_state['csv_fname']}**")
-            with col_pin:
-                st.link_button("📌 Upload to Pinterest",
-                                url="https://www.pinterest.com/settings/bulk-create-pins/")
-    with col_clr:
-        if st.button("🗑️ Clear Queue", key="clr_btn"):
-            st.session_state.pins = []
-            if "csv_uploaded_path" in st.session_state:
-                del st.session_state["csv_uploaded_path"]
-            st.rerun()
+            st.link_button("📌 Upload to Pinterest",
+                            url="https://www.pinterest.com/settings/bulk-create-pins/")
