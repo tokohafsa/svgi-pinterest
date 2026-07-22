@@ -7,7 +7,7 @@ import io
 
 from utils.instagram import fetch_ig_metadata, download_ig_video
 from utils.dropbox_client import upload_and_get_link, upload_csv
-from utils.model import detect_credits, generate_content, SECTORS, BOARD_TITLE_SUFFIX
+from utils.model import detect_credits, generate_content, SECTORS, BOARD_TITLE_SUFFIX, _build_credit_line
 from utils.scheduler import generate_schedule
 from utils.thumbnail import extract_frames, format_timestamp
 from utils.media import download_direct, convert_to_mp4, get_duration
@@ -30,7 +30,7 @@ except Exception:
 def _clear_ig_fields():
     """Hapus semua widget keys tab Instagram dari session_state."""
     for k in [
-        "ig_url_input", "ig_brand", "ig_client", "ig_anim", "ig_logo",
+        "ig_url_input", "ig_brand", "ig_poster", "ig_mentions",
         "ig_pin_name", "ig_board", "ig_sector",
         "ig_title", "ig_desc", "ig_kw",
     ]:
@@ -153,6 +153,7 @@ with tab_ig:
                 uploader_id=meta.get("uploader_id", ""),
                 api_key=GROQ_KEY,
             )
+            # credits = {"brand_name": ..., "mentions": [...], "poster": "@uploader"}
 
         duration = int(meta.get("duration") or 15)
         max_sec = min(duration, 30)
@@ -226,22 +227,37 @@ with tab_ig:
 
         st.divider()
         st.subheader("④ Credits (auto-detected, editable)")
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2 = st.columns(2)
         with col1:
             cur["brand_name"] = st.text_input("Brand Name", value=cur.get("brand_name", ""), key="ig_brand")
         with col2:
-            cur["client"] = st.text_input("Client @", value=cur.get("client") or "", key="ig_client")
-        with col3:
-            cur["animator"] = st.text_input("Animator @", value=cur.get("animator") or "", key="ig_anim")
-        with col4:
-            cur["logo_maker"] = st.text_input("Logo Maker @", value=cur.get("logo_maker") or "", key="ig_logo")
+            cur["poster"] = st.text_input(
+                "Poster @",
+                value=cur.get("poster", ""),
+                help="Akun Instagram yang posting konten ini",
+                key="ig_poster",
+            )
+        # Mentions dari caption — auto-detect, editable sebagai teks
+        mentions_raw = st.text_input(
+            "@Mentions dari caption",
+            value=" ".join(cur.get("mentions", [])),
+            help="Semua @mention yang ada di caption (selain poster). Pisah dengan spasi.",
+            key="ig_mentions",
+        )
+        cur["mentions"] = [m.strip() for m in mentions_raw.split() if m.strip().startswith("@")]
+
+        # Preview credit line realtime
+        preview_credit = _build_credit_line(cur.get("poster", ""), cur.get("mentions", []))
+        st.caption(f"Preview credit: `{preview_credit}`")
 
         st.divider()
         st.subheader("⑤ Pin Details")
         col_a, col_b, col_c = st.columns([2, 2, 2])
         with col_a:
             custom_name = st.text_input("Pin name (optional)", value=cur.get("custom_name", cur.get("brand_name", "")), key="ig_pin_name")
-            pin_title = f"{custom_name or cur.get('brand_name', 'Logo')} Logo Animation"
+            board_preview = cur.get("board", BOARDS[0])
+            suffix = BOARD_TITLE_SUFFIX.get(board_preview, "Logo Animation")
+            pin_title = f"{custom_name or cur.get('brand_name', 'Logo')} {suffix}"
             st.caption(f"→ **{pin_title}**")
             cur["custom_name"] = custom_name
         with col_b:
@@ -249,6 +265,9 @@ with tab_ig:
                                   index=BOARDS.index(cur.get("board", BOARDS[0])) if cur.get("board") in BOARDS else 0,
                                   key="ig_board")
             cur["board"] = board
+            # Update suffix setelah board dipilih
+            suffix = BOARD_TITLE_SUFFIX.get(board, "Logo Animation")
+            pin_title = f"{custom_name or cur.get('brand_name', 'Logo')} {suffix}"
         with col_c:
             sector = st.selectbox("Sector (optional)", SECTORS,
                                    index=SECTORS.index(cur.get("sector", "")) if cur.get("sector", "") in SECTORS else 0,
@@ -262,9 +281,8 @@ with tab_ig:
                     result = generate_content(
                         pin_title=pin_title,
                         brand_name=cur.get("brand_name", ""),
-                        client=cur.get("client") or "",
-                        animator=cur.get("animator") or "",
-                        logo_maker=cur.get("logo_maker") or "",
+                        poster=cur.get("poster", ""),
+                        mentions=cur.get("mentions", []),
                         board=board,
                         caption=cur["caption"],
                         api_key=GROQ_KEY,
@@ -437,7 +455,7 @@ with tab_direct:
         with col_a:
             pin_name = st.text_input("Pin name", placeholder="e.g. Nike", key="dt_pin_name",
                                       value=cur.get("pin_name", ""))
-            suffix = BOARD_TITLE_SUFFIX.get(cur.get("board", "Logo Animations"), "Logo Animation")
+            suffix = BOARD_TITLE_SUFFIX.get(cur.get("board", BOARDS[0]), "Logo Animation")
             pin_title = f"{pin_name} {suffix}" if pin_name else suffix
             st.caption(f"→ **{pin_title}**")
             cur["pin_name"] = pin_name
@@ -471,27 +489,14 @@ with tab_direct:
                     result = generate_content(
                         pin_title=pin_title,
                         brand_name=pin_name,
-                        client="",
-                        animator=credit,
-                        logo_maker="",
+                        poster=credit,
+                        mentions=[],
                         board=board,
-                        caption=credit,
+                        caption=pin_name,
                         api_key=GROQ_KEY,
                         cta_index=st.session_state.cta_counter,
                         sector=cur.get("sector", ""),
                     )
-                    # Override description credit line with user's manual credit
-                    desc = result.get("description", "")
-                    if credit:
-                        lines = desc.split("\n")
-                        credit_stripped = credit.strip()
-                        # Tambah prefix "Credit: " kalau belum ada
-                        if not credit_stripped.lower().startswith("credit:"):
-                            lines[0] = f"Credit: {credit_stripped}"
-                        else:
-                            lines[0] = credit_stripped
-                        desc = "\n".join(lines)
-                    result["description"] = desc
                     cur.update(result)
                     st.session_state.stage_direct = "generated"
                     st.rerun()
@@ -533,10 +538,27 @@ if st.session_state.pins:
     st.subheader(f"📋 Queue — {len(st.session_state.pins)} pin(s)")
 
     df = pd.DataFrame(st.session_state.pins, columns=CSV_COLUMNS)
-    st.dataframe(df, width=1400, column_config={
-        "Description": st.column_config.TextColumn(width="large"),
-        "Keywords": st.column_config.TextColumn(width="large"),
-    })
+    edited_df = st.data_editor(
+        df,
+        width=1400,
+        num_rows="fixed",
+        column_config={
+            "Title": st.column_config.TextColumn(width="medium"),
+            "Video URL": st.column_config.TextColumn(width="medium"),
+            "Pinterest board": st.column_config.SelectboxColumn(
+                width="medium",
+                options=BOARDS,
+            ),
+            "Thumbnail": st.column_config.TextColumn(width="small"),
+            "Description": st.column_config.TextColumn(width="large"),
+            "Link": st.column_config.TextColumn(width="medium"),
+            "Publish date": st.column_config.TextColumn(width="medium"),
+            "Keywords": st.column_config.TextColumn(width="large"),
+        },
+        key="queue_editor",
+    )
+    # Sync edits back ke session_state
+    st.session_state.pins = edited_df.to_dict("records")
 
     st.divider()
     st.subheader("📅 Export CSV")
