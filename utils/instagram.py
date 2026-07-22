@@ -1,6 +1,20 @@
 import yt_dlp
 import os
 import re
+from urllib.parse import urlparse, parse_qs
+
+
+def _parse_img_index(url: str):
+    """
+    Parse ?img_index=N dari URL Instagram carousel.
+    Instagram pakai 1-based index, yt-dlp playlist_items juga 1-based.
+    Return string '2' untuk img_index=2, atau None kalau bukan carousel.
+    """
+    qs = parse_qs(urlparse(url).query)
+    val = qs.get("img_index", [None])[0]
+    if val and val.isdigit():
+        return val
+    return None
 
 
 def _extract_username_from_url(url: str) -> str:
@@ -15,10 +29,25 @@ def _extract_username_from_url(url: str) -> str:
 
 
 def fetch_ig_metadata(url: str) -> dict:
-    ydl_opts = {"quiet": True, "no_warnings": True, "skip_download": True}
+    img_index = _parse_img_index(url)
+
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+    }
+    if img_index:
+        ydl_opts["playlist_items"] = img_index
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
+
+            # Kalau carousel, yt-dlp return dict dengan key 'entries'
+            # Ambil entry yang sesuai index, bukan seluruh playlist
+            if info.get("_type") == "playlist" and info.get("entries"):
+                entries = [e for e in info["entries"] if e is not None]
+                info = entries[0] if entries else info
 
             description = info.get("description", "")
 
@@ -61,6 +90,8 @@ def fetch_ig_metadata(url: str) -> dict:
 
 
 def download_ig_video(url: str, output_dir: str) -> str:
+    img_index = _parse_img_index(url)
+
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
@@ -68,9 +99,18 @@ def download_ig_video(url: str, output_dir: str) -> str:
         "format": "mp4/best[ext=mp4]/best",
         "merge_output_format": "mp4",
     }
+    if img_index:
+        ydl_opts["playlist_items"] = img_index
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
+
+            # Kalau carousel, info adalah playlist — ambil entry yang didownload
+            if info.get("_type") == "playlist" and info.get("entries"):
+                entries = [e for e in info["entries"] if e is not None]
+                info = entries[0] if entries else info
+
             filename = ydl.prepare_filename(info)
             if not filename.endswith(".mp4"):
                 filename = os.path.splitext(filename)[0] + ".mp4"
