@@ -12,41 +12,26 @@ SECTORS = [
     "Health & Medical", "Hotels & Hospitality", "Insurance",
     "Law & Legal Services", "Logistics & Shipping", "Luxury & Lifestyle",
     "Manufacturing & Industry", "Music & Audio", "NFT & Digital Art",
-    "Non-Profit & NGO", "Outdoor & Recreation", "Pets & Animals",
-    "Photography & Film", "Religion & Spiritual", "Retail & E-Commerce",
-    "Software & SaaS", "Sports & Fitness", "Technology & Electronics",
-    "Telecommunications", "Travel & Tourism", "YouTube & Content Creation",
+    "Non-Profit & NGO", "Outdoor & Recreation", "Pets & Animals", "Photography & Film",
+    "Religion & Spiritual", "Retail & E-Commerce", "Software & SaaS",
+    "Sports & Fitness", "Technology & Electronics", "Telecommunications",
+    "Travel & Tourism", "YouTube & Content Creation",
     # — Mobile App —
     "Mobile App & Startup", "Fintech & Mobile Banking", "Food Delivery & Restaurant App",
     "Health & Fitness App", "Dating & Social App", "Productivity & SaaS App",
     "E-Commerce & Marketplace App", "Gaming & Mobile Gaming",
     "Education & Learning App", "Travel & Navigation App",
+    # — Agency & Creative —
+    "Branding & Design Agency", "Motion Design Studio", "Video Production Studio",
+    "Creative Agency", "Social Media Agency", "Marketing Agency",
+    "Advertising Agency", "UI/UX Design Studio", "3D & VFX Studio",
+    "Illustration & Art Studio", "Photography Studio", "PR & Communications Agency",
+    "Content Creation Agency", "Freelance Designer", "Independent Animator",
 ]
 
-BOARDS_KEYWORD_CONTEXT = {
-    "Logo Animations": "logo animation, motion graphics, brand animation, animated logo, logo reveal, motion design, brand identity, logo intro",
-    "E Sports Gaming Logo Animations": "esports logo animation, gaming logo, esports branding, gaming motion graphics, esports team logo, gaming channel logo, streamer logo animation, esports identity",
-    "Famous Brand Logo Animations": "famous brand logo, iconic brand animation, brand logo reveal, corporate logo animation, well-known brand motion, global brand identity, brand motion design",
-    "Brand Identity in Motion": "brand identity animation, animated brand identity, motion branding, brand in motion, visual identity system, kinetic branding, brand motion design, animated brand system",
-}
-
-BOARD_SEO_TONE = {
-    "Logo Animations": "Focus on animation quality, motion style, and logo reveal technique. Use words like: logo reveal, animated logo, motion design, logo intro, brand animation.",
-    "E Sports Gaming Logo Animations": "Focus on gaming energy, esports identity, and competitive branding. Use words like: esports logo, gaming clan, streamer intro, team identity, gaming motion.",
-    "Famous Brand Logo Animations": "Focus on iconic brand recognition, corporate identity, and global brand presence. Use words like: iconic brand, corporate logo, world-famous, brand reveal, global identity.",
-    "Brand Identity in Motion": "Focus on brand storytelling, visual identity systems, and how the brand communicates through motion. Do NOT focus on just the logo — talk about brand personality, visual language, and identity in motion. Use words like: brand identity, visual storytelling, motion branding, brand system, kinetic identity.",
-}
-
-BOARD_TITLE_SUFFIX = {
-    "Logo Animations": "Logo Animation",
-    "E Sports Gaming Logo Animations": "Logo Animation",
-    "Famous Brand Logo Animations": "Logo Animation",
-    "Brand Identity in Motion": "Animated Brand Identity",
-}
-
-# Per-sector SEO hint — injected into prompt to guide seo_body and keywords
+# Per-sector SEO hint — injected into prompt untuk guide seo_body dan keywords
 SECTOR_SEO_HINT = {
-    # General sectors
+    # General
     "Automotive": "Mention speed, precision engineering, bold motion, and automotive brand energy. Keywords: car brand animation, automotive logo reveal, vehicle brand motion.",
     "Aviation & Aerospace": "Mention precision, altitude, futuristic motion, and aerospace identity. Keywords: aviation logo animation, aerospace brand, flight brand motion.",
     "Beauty & Cosmetics": "Mention elegance, glow, fluid motion, and beauty brand identity. Keywords: beauty brand animation, cosmetics logo reveal, skincare brand motion.",
@@ -80,7 +65,7 @@ SECTOR_SEO_HINT = {
     "Telecommunications": "Mention connectivity, signal motion, and telecom brand identity. Keywords: telecom logo animation, network brand reveal, connectivity brand motion.",
     "Travel & Tourism": "Mention wanderlust, smooth motion, and travel brand personality. Keywords: travel logo animation, tourism brand reveal, destination brand motion.",
     "YouTube & Content Creation": "Mention creator energy, channel identity, intro animation, and content brand motion. Keywords: YouTube logo animation, channel intro, content creator brand motion.",
-    # Mobile App sectors
+    # Mobile App
     "Mobile App & Startup": "Mention app launch energy, startup brand identity, clean UI motion, and digital product branding. Keywords: app logo animation, startup brand motion, mobile app brand reveal, app icon animation.",
     "Fintech & Mobile Banking": "Mention financial trust, clean digital motion, secure brand identity, and fintech product launch. Keywords: fintech logo animation, mobile banking brand, digital finance brand motion, payment app identity.",
     "Food Delivery & Restaurant App": "Mention appetite, speed, warm brand energy, and food app identity. Keywords: food app logo animation, delivery brand motion, restaurant app brand reveal, food tech identity.",
@@ -91,6 +76,43 @@ SECTOR_SEO_HINT = {
     "Gaming & Mobile Gaming": "Mention bold game studio identity, launch screen animation, mobile game brand energy. Keywords: mobile game logo animation, game studio brand motion, gaming app brand reveal, mobile gaming identity.",
     "Education & Learning App": "Mention knowledge, growth, friendly brand motion, and edtech app identity. Keywords: edtech logo animation, learning app brand motion, education app brand reveal, e-learning app identity.",
     "Travel & Navigation App": "Mention exploration, smooth motion, travel tech brand identity. Keywords: travel app logo animation, navigation brand motion, map app brand reveal, travel tech identity.",
+    # Agency & Creative
+    "Branding & Design Agency": "Mention brand craftsmanship, visual identity systems, agency portfolio, and professional brand motion. Keywords: branding agency logo animation, design agency brand reveal, identity studio motion, brand strategy in motion.",
+    "Motion Design Studio": "Mention studio craft, motion reel, animation showreel, and studio identity. Keywords: motion design studio logo, animation studio brand reveal, motion studio identity, design studio intro animation.",
+    "Video Production Studio": "Mention cinematic brand energy, production house identity, studio logo reveal. Keywords: video production logo animation, production studio brand motion, film studio identity reveal.",
+    "Creative Agency": "Mention creative brand energy, agency identity, conceptual motion design. Keywords: creative agency logo animation, agency brand reveal, creative studio motion, concept-driven brand identity.",
+    "Social Media Agency": "Mention digital-first branding, social brand motion, agency identity for content creators. Keywords: social media agency logo, digital agency brand animation, content agency motion, social brand reveal.",
+    "Marketing Agency": "Mention results-driven brand identity, marketing studio motion, agency logo reveal. Keywords: marketing agency logo animation, digital marketing brand motion, growth agency identity reveal.",
+    "Advertising Agency": "Mention bold campaign energy, ad agency brand identity, creative motion. Keywords: advertising agency logo animation, ad studio brand reveal, campaign identity in motion.",
+    "UI/UX Design Studio": "Mention clean interface motion, product design identity, UX studio brand. Keywords: UI UX studio logo animation, product design brand motion, interface studio identity reveal.",
+    "3D & VFX Studio": "Mention dimensional brand energy, VFX studio identity, render-quality motion. Keywords: VFX studio logo animation, 3D studio brand reveal, visual effects identity motion.",
+    "Illustration & Art Studio": "Mention artistic brand personality, illustration studio identity, hand-crafted motion. Keywords: illustration studio logo animation, art studio brand reveal, creative studio identity motion.",
+    "Photography Studio": "Mention visual storytelling, photography studio brand, shutter-inspired motion. Keywords: photography studio logo animation, photo brand reveal, studio identity motion.",
+    "PR & Communications Agency": "Mention trust, clarity, professional brand motion, and PR agency identity. Keywords: PR agency logo animation, communications brand reveal, public relations identity motion.",
+    "Content Creation Agency": "Mention creator economy branding, content studio identity, digital media motion. Keywords: content agency logo animation, creator studio brand reveal, media production identity motion.",
+    "Freelance Designer": "Mention personal brand motion, designer portfolio identity, solo creative studio. Keywords: freelance designer logo animation, personal brand reveal, designer identity motion, solo studio brand.",
+    "Independent Animator": "Mention animator personal brand, motion showreel identity, solo studio intro. Keywords: animator logo animation, motion artist brand reveal, independent studio identity, animator personal brand motion.",
+}
+
+BOARDS_KEYWORD_CONTEXT = {
+    "Logo Animations": "logo animation, motion graphics, brand animation, animated logo, logo reveal, motion design, brand identity, logo intro",
+    "E Sports Gaming Logo Animations": "esports logo animation, gaming logo, esports branding, gaming motion graphics, esports team logo, gaming channel logo, streamer logo animation, esports identity",
+    "Famous Brand Logo Animations": "famous brand logo, iconic brand animation, brand logo reveal, corporate logo animation, well-known brand motion, global brand identity, brand motion design",
+    "Brand Identity in Motion": "brand identity animation, animated brand identity, motion branding, brand in motion, visual identity system, kinetic branding, brand motion design, animated brand system",
+}
+
+BOARD_SEO_TONE = {
+    "Logo Animations": "Focus on animation quality, motion style, and logo reveal technique. Use words like: logo reveal, animated logo, motion design, logo intro, brand animation.",
+    "E Sports Gaming Logo Animations": "Focus on gaming energy, esports identity, and competitive branding. Use words like: esports logo, gaming clan, streamer intro, team identity, gaming motion.",
+    "Famous Brand Logo Animations": "Focus on iconic brand recognition, corporate identity, and global brand presence. Use words like: iconic brand, corporate logo, world-famous, brand reveal, global identity.",
+    "Brand Identity in Motion": "Focus on brand storytelling, visual identity systems, and how the brand communicates through motion. Do NOT focus on just the logo — talk about brand personality, visual language, and identity in motion. Use words like: brand identity, visual storytelling, motion branding, brand system, kinetic identity.",
+}
+
+BOARD_TITLE_SUFFIX = {
+    "Logo Animations": "Logo Animation",
+    "E Sports Gaming Logo Animations": "Logo Animation",
+    "Famous Brand Logo Animations": "Logo Animation",
+    "Brand Identity in Motion": "Animated Brand Identity",
 }
 
 CTA_VARIANTS = [
@@ -112,28 +134,35 @@ CTA_VARIANTS = [
 
 
 def detect_credits(caption: str, uploader_id: str, api_key: str) -> dict:
-    """
-    Detect brand_name dari caption.
-    Kembalikan semua @mention dari caption (kecuali uploader_id sendiri).
-    """
+    """Detect client, animator, logo_maker, brand_name from caption only."""
     client = Groq(api_key=api_key)
 
     prompt = f"""Analyze this Instagram caption for a logo animation post.
-Extract information. Return ONLY valid JSON, no markdown, no backticks.
+Extract credit information. Return ONLY valid JSON, no markdown, no backticks.
 
 CAPTION:
 \"\"\"{caption}\"\"\"
 
-UPLOADER_ID: @{uploader_id}
+UPLOADER_ID (the IG account that posted this — treat as the animator/creator by default): @{uploader_id}
 
 Rules:
+- "animator": ALWAYS @{uploader_id}. Never change this.
+- "client": @username of the person/brand the animation was made FOR or WITH.
+  Look for: "for @", "with @", "client @", "made for @", "made with @", or any @mention that is NOT the uploader.
+  Example: "made with my wife - @ganihakobian" → client = @ganihakobian.
+  Example: "logo animation for @nikesports" → client = @nikesports.
+  null if no other @mention found.
+- "logo_maker": @username explicitly credited as logo designer/graphic designer.
+  Look for: "logo by @", "design by @", "graphic by @", "designed by @".
+  null if not found. Do NOT assign client as logo_maker.
 - "brand_name": plain name of the brand/logo being animated. Infer from context. If unclear, use empty string.
-- "mentions": list of ALL @usernames found in caption, excluding @{uploader_id}. Return as array of strings with @ prefix. Empty array if none.
 
 Return:
 {{
   "brand_name": "...",
-  "mentions": ["@username1", "@username2"]
+  "client": "@username or null",
+  "animator": "@{uploader_id}",
+  "logo_maker": "@username or null"
 }}"""
 
     try:
@@ -147,35 +176,17 @@ Return:
         text = re.sub(r"^```json\s*", "", text)
         text = re.sub(r"^```\s*", "", text)
         text = re.sub(r"\s*```$", "", text)
-        data = json.loads(text.strip())
-        return {
-            "brand_name": data.get("brand_name", ""),
-            "mentions": data.get("mentions", []),
-            "poster": f"@{uploader_id}",
-        }
+        return json.loads(text.strip())
     except Exception:
-        return {"brand_name": "", "mentions": [], "poster": f"@{uploader_id}"}
-
-
-def _build_credit_line(poster: str, mentions: list) -> str:
-    """
-    Format: Credit: @mention1 @mention2 | from @poster on Instagram
-    Kalau tidak ada mention: Credit: @poster on Instagram
-    """
-    poster = poster.strip() if poster else ""
-    clean_mentions = [m.strip() for m in (mentions or []) if m and m.strip()]
-
-    if clean_mentions:
-        mention_str = " ".join(clean_mentions)
-        return f"Credit: {mention_str} | from {poster} on Instagram"
-    return f"Credit: {poster} on Instagram"
+        return {"brand_name": "", "client": None, "animator": f"@{uploader_id}", "logo_maker": None}
 
 
 def generate_content(
     pin_title: str,
     brand_name: str,
-    poster: str,
-    mentions: list,
+    client: str,
+    animator: str,
+    logo_maker: str,
     board: str,
     caption: str,
     api_key: str,
@@ -188,20 +199,25 @@ def generate_content(
     cta_title = CTA_VARIANTS[cta_index % len(CTA_VARIANTS)]
     cta_desc = CTA_VARIANTS[(cta_index + 1) % len(CTA_VARIANTS)]
 
-    credit_line = _build_credit_line(poster, mentions)
-    pin_title_full = f"{pin_title}. {cta_title}"
+    # Build credit line
+    parts = []
+    if client and client not in ("null", ""):
+        parts.append(f"IG: {client}")
+    if animator:
+        parts.append(f"Credit: {animator} on Instagram")
+    if logo_maker and logo_maker not in ("null", ""):
+        parts.append(f"Logo by {logo_maker}")
+    credit_line = " | ".join(parts) if parts else f"Credit: {animator} on Instagram"
 
+    sector_ctx = f" | Sector: {sector}" if sector else ""
     board_tone = BOARD_SEO_TONE.get(board, BOARD_SEO_TONE["Logo Animations"])
 
-    # Sector SEO hint — spesifik per sektor, jauh lebih informatif dari template generik
     sector_hint = SECTOR_SEO_HINT.get(sector, "")
-    sector_ctx = f" | Sector: {sector}" if sector else ""
     sector_instruction = (
         f"\nSECTOR SEO INSTRUCTION ({sector}): {sector_hint}"
         if sector_hint else ""
     )
 
-    # Instruksi tambahan khusus board Brand Identity in Motion
     is_brand_identity = (board == "Brand Identity in Motion")
     brand_identity_note = (
         "\nIMPORTANT: This pin is about a full brand identity system in motion, not just a logo. "
@@ -222,7 +238,7 @@ TONE INSTRUCTION FOR THIS BOARD: {board_tone}{brand_identity_note}{sector_instru
 
 Generate:
 - "keywords": comma-separated, max 20 highly relevant SEO keywords. Mix broad board keywords with specific sector keywords from the sector instruction above. No hashtags.
-- "seo_body": 2 sentences of natural SEO text. Follow the board tone AND the sector instruction above. Max 200 chars total. Do NOT repeat the pin title or brand name at the start. Never mention 3D, three-dimensional, or 3D design.
+- "seo_body": 2 sentences of natural SEO text. Follow the board tone AND sector instruction above. Max 200 chars total. Do NOT repeat the pin title or brand name at the start. Never mention 3D, three-dimensional, or 3D design.
 
 Description format (for your reference only, do not include in output):
 Line 1: {credit_line}
@@ -248,6 +264,8 @@ Return:
         text = re.sub(r"\s*```$", "", text)
         data = json.loads(text.strip())
 
+        pin_title_full = f"{pin_title}. {cta_title}"
+        # Description: NO title repeat — starts directly with credit line
         full_description = f"{credit_line}\n{data['seo_body']}\n{cta_desc}"
 
         return {
@@ -260,4 +278,3 @@ Return:
         raise RuntimeError(f"Model returned invalid JSON: {e}")
     except Exception as e:
         raise RuntimeError(f"Groq API error: {str(e)}")
-
