@@ -1,165 +1,171 @@
 SVGI PINTEREST PIPELINE — MEMORY FILE
-Generated: 2026-07-14 (updated v9 — 2026-07-18)
+Generated: 2026-07-23 (updated v7)
 ======================================
 
 ## AKUN
-- Pinterest: svg_i (171K monthly views, 1.6K followers)
-- Niche: Logo Animation & Brand Identity in Motion
+- Pinterest: svg_i (niche: logo animation)
 - IG source konten: repost dari kreator logo animation di Instagram
-- Non-IG source: direct URL (mp4/gif) dari sumber lain
 
 ## TUJUAN APP
-Automate pipeline dari berbagai source → Dropbox → Pinterest CSV bulk upload
-Monetisasi via Fiverr affiliate (Awin — sudah approved, pending link setup)
+Automate pipeline dari Instagram / Direct URL → Dropbox → Pinterest CSV bulk upload
 
 ## STACK
 - Framework: Streamlit (deployed ke Streamlit Cloud)
 - AI/Model: Groq API (llama-3.3-70b-versatile)
-- Video fetch: yt-dlp (IG) + requests (direct URL)
+- Video fetch IG: yt-dlp
+- Video fetch Direct: requests (download langsung)
 - Frame extraction: imageio-ffmpeg (bundle binary)
-- GIF conversion: ffmpeg via imageio-ffmpeg
 - Storage: Dropbox API (App Folder: /Apps/SVGI Pinterest/)
-- Output: CSV + video otomatis tersimpan ke folder session di Dropbox
+- Output: CSV + video tersimpan ke folder session di Dropbox
 
 ## STRUKTUR FILE
 svgi-pinterest/
-├── app.py                        ← main Streamlit app (2 tabs)
+├── app.py                        ← main Streamlit app (2 tab)
 ├── requirements.txt
 ├── .gitignore
-├── svgi_pinterest_memory.txt     ← file ini
+├── svgi_pinterest_memory.txt
 ├── .streamlit/
 │   ├── config.toml               ← light theme, sage green #5B7B6F
 │   └── secrets.toml              ← tidak di-push ke GitHub
 └── utils/
     ├── __init__.py
-    ├── instagram.py              ← yt-dlp fetch metadata + download
+    ├── instagram.py              ← yt-dlp fetch + download + carousel fix
     ├── dropbox_client.py         ← upload video + CSV ke Dropbox
-    ├── model.py                  ← Groq: detect credits + generate SEO
-    ├── scheduler.py              ← randomize publish dates
-    ├── thumbnail.py              ← ffmpeg extract frames → base64
-    └── media.py                  ← download direct URL + GIF→MP4 convert
-
-## APP STRUCTURE
-2 Tab:
-- Tab 1: 📱 Instagram Source (existing pipeline)
-- Tab 2: 🌐 Direct URL Source (non-IG, support MP4 + GIF)
-
-Shared: queue, export CSV, session folder, scheduler
+    ├── model.py                  ← Groq: detect credits + generate SEO content
+    ├── scheduler.py              ← distribute publish dates dalam rentang waktu
+    ├── thumbnail.py              ← ffmpeg extract frames → base64 jpeg
+    └── media.py                  ← download direct URL, convert GIF→MP4, get duration
 
 ## PIPELINE FLOW — TAB 1 (Instagram)
-0. Klik New Session → folder Dropbox: /2026-07-11_1430
-1. Paste URL Instagram reel/post
-2. Fetch metadata (yt-dlp) + download + upload Dropbox
-3. Detect credits dari caption (auto, editable)
-4. Preview video (1/3 lebar) + thumbnail grid 4 per row
-5. Input pin name opsional + Board + Sektor
-6. Generate → edit → Regenerate
-7. Add to Queue → semua field clear otomatis (URL, brand, credits, title, desc, keywords)
-8. Loop
+1. New Session → buat folder Dropbox: /2026-07-23_1430
+2. Paste URL Instagram reel/post (support carousel dengan ?img_index=N)
+3. Fetch metadata (yt-dlp) + download video
+4. Upload video ke Dropbox
+5. Extract 8 frame thumbnail (ffmpeg)
+6. Preview video + thumbnail grid (klik untuk pilih, border merah tanda terpilih)
+7. Raw caption ditampilkan (read-only)
+8. Credits: field Poster @ + @Mentions dari caption (auto-detect, editable)
+   Preview credit line realtime di bawah field
+9. Input pin name + pilih Board + pilih Sector
+10. Generate → review/edit Title, Description, Keywords
+11. Regenerate jika perlu
+12. Add to Queue
+13. Loop ke step 2 untuk URL baru
+14. Generate CSV Preview → Edit CSV → Upload ke Dropbox (3 step terpisah)
 
-## PIPELINE FLOW — TAB 2 (Direct URL)
-0. Same session folder
-1. Paste direct URL (.mp4 atau .gif)
-2. Download via requests → jika GIF: auto-convert ke MP4 via ffmpeg
-3. Upload ke Dropbox (folder session)
-4. Preview + thumbnail grid
-5. Input pin name (wajib) + Credit (bebas teks) + Link original (dinamis per pin)
-6. Board + Sektor dropdown
-7. Generate → edit → Regenerate
-8. Add to Queue → semua field clear otomatis (URL, pin name, credit, link, title, desc, keywords)
+## PIPELINE FLOW — TAB 2 (Direct URL / GIF)
+1. Paste direct URL (.mp4 / .mov / .gif)
+2. Download file + extract frames thumbnail
+3. Preview video/GIF + thumbnail grid
+4. Input manual: Nama pin, Credit animator (plain text), Link ke konten asli (dinamis per pin)
+5. Pilih Board + Sector
+6. Generate → review/edit Title, Description, Keywords
+7. Add to Queue
+8. Generate CSV Preview → Edit CSV → Upload ke Dropbox (3 step terpisah)
+   Nama file CSV: NON-IG_bulk_logo_{session_folder}.csv
 
-## THUMBNAIL GRID
-- 8+ frame diekstrak mulai detik 0:02 sampai durasi penuh
-- 4 per row, klik untuk pilih, border merah = selected
-- Fallback radio button jika ffmpeg gagal
-- File tmp dibersihkan tiap video baru (prefix svgi_thumb_)
+## CAROUSEL FIX (instagram.py)
+- _parse_img_index(url): parse ?img_index=N dari URL
+- _strip_img_index(url): buang parameter sebelum kirim ke yt-dlp
+- yt-dlp fetch seluruh carousel dengan ignoreerrors=True
+- _pick_entry(info, img_index): filter entries yang video (bukan foto),
+  lalu ambil entry ke-N sesuai img_index (1-based)
+- Fallback: kalau tidak bisa filter, pakai index mentah
 
-## STRUKTUR FOLDER DROPBOX
-/Apps/SVGI Pinterest/
-└── 2026-07-11_1430/
-    ├── video_xxx.mp4
-    ├── media_converted.mp4    ← hasil konversi GIF
-    └── bulk_logo_NON-IG_2026-07-11_1430.csv
-
-## CSV NAMING
-- Semua IG → bulk_logo_{folder}.csv
-- Semua NON-IG → bulk_logo_NON-IG_{folder}.csv
-- Campuran → bulk_logo_mixed_{folder}.csv
-
-## BOARDS (4 board)
-1. Logo Animations
-2. E Sports Gaming Logo Animations
-3. Famous Brand Logo Animations
-4. Brand Identity in Motion
-
-## BOARD DESKRIPSI PINTEREST
-Logo Animations:
-"A curated collection of logo animation references from motion designers worldwide. Covers logo reveals, animated brand marks, motion intros, and kinetic logo design across every style and industry."
-
-E Sports Gaming Logo Animations:
-"The best esports and gaming logo animations from motion designers worldwide. Covers animated clan logos, streamer intros, team identity reveals, and dynamic gaming brand marks across all game genres and platforms."
-
-Famous Brand Logo Animations:
-"Iconic brand logos brought to life through motion design. A curated collection of animated logo reveals from the world's most recognized brands, from global corporations to iconic consumer labels."
-
-Brand Identity in Motion:
-"Brand identity design brought to life through animation and motion graphics. Explore animated logos, visual identity systems, and dynamic branding from top motion designers. Not just logo animations, but how brands communicate their identity with motion."
-
-## TITLE SUFFIX PER BOARD
-- Logo Animations → {Nama} Logo Animation
-- E Sports Gaming → {Nama} Logo Animation
-- Famous Brand → {Nama} Logo Animation
-- Brand Identity in Motion → {Nama} Animated Brand Identity
-
-## SEO TONE PER BOARD
-- Logo Animations → reveal technique, motion style, logo animation quality
-- E Sports Gaming → gaming energy, esports identity, competitive branding
-- Famous Brand → iconic recognition, corporate identity, global brand
-- Brand Identity in Motion → brand storytelling, visual language, identity system (bukan sekadar logo)
+## CREDIT LINE FORMAT
+- Ada @mention di caption:
+  "Credit: @mention1 @mention2 | from @poster on Instagram"
+- Tidak ada @mention:
+  "Credit: @poster on Instagram"
+- Tab Direct (NON-IG):
+  "Credit: {nama animator yang diinput}" — plain text, tidak ada @poster
 
 ## FORMAT TITLE
-{Nama} {Suffix}. {CTA front-loaded}
-Contoh: "Cleveland Gaming Classic Animated Brand Identity. Bio link connects you with designers who can bring your logo to life 🎬"
+{Nama} {suffix board}
+Suffix per board:
+- Logo Animations             → "Logo Animation"
+- E Sports Gaming ...         → "Logo Animation"
+- Famous Brand ...            → "Logo Animation"
+- Brand Identity in Motion    → "Animated Brand Identity"
 
-CTA di depan kalimat kedua agar tidak truncated oleh Pinterest
+Contoh board biasa: "Vortex Logo Animation. [CTA]"
+Contoh Brand Identity: "Nike Animated Brand Identity. [CTA]"
 
 ## FORMAT DESCRIPTION
-{credit_line}
-{2 kalimat SEO natural sesuai board tone}
-{CTA-2 berbeda}
+Line 1: {credit_line}
+Line 2-3: seo_body (2 kalimat SEO, max 200 chars)
+Line 4: {cta_desc}
 
 Catatan:
-- Title tidak diulang di description
-- Tidak sebut 3D/three-dimensional
-- Credit Tab 1: auto-detect dari caption (editable), format: "Credit: @username on Instagram"
-- Credit Tab 2: bebas teks manual, otomatis diberi prefix "Credit: " jika belum ada
-  → user ketik "@username" → tersimpan sebagai "Credit: @username"
-  → user ketik "Credit: @username" → tidak dobel, tetap "Credit: @username"
-  → user ketik "Motion by @x | Logo by @y" → "Credit: Motion by @x | Logo by @y"
+- Title TIDAK diulang di baris pertama description
+- Board "Brand Identity in Motion": seo_body harus bicara tentang brand system
+  dan visual identity, bukan logo reveal atau logo intro
+- Jangan sebut 3D, three-dimensional
 
-## CTA VARIANTS (14 — soft selling, front-loaded)
-- Inspired by this? Our bio link connects you with the right motion designer 🔗
-- Love this style? Find talented animators via the link in our bio ✨
-- Bio link has options if you want something like this for your brand 🎬
-- See bio link to explore logo animation services for your brand 🔗
-- Want this for your brand? Our bio link is a good starting point 💡
-- Curious about motion design? Check the bio link for where to start 🎯
-- Great motion design is closer than you think. Bio link has options 🔗
-- Find the right motion designer for your brand via our bio link ✨
-- Bio link connects you with designers who can bring your logo to life 🎬
-- Looking for motion design services? Start with the bio link 🔗
-- Your brand could move like this. Bio link has the right people 💡
-- Explore logo animation options for your brand via the bio link 🎯
-- Motion design for your brand starts here. Check the bio link 🔗
-- Bio link has everything you need to get your brand animated ✨
+## SECTOR SEO HINT
+model.py punya dict SECTOR_SEO_HINT — 49 sektor dengan instruksi spesifik
+yang diinjeksi ke prompt Groq untuk guide seo_body dan keywords per sektor.
+
+Kategori sektor:
+- General (33 sektor): Automotive, Beauty, Fashion, Finance, dll
+- Mobile App (10 sektor): Mobile App & Startup, Fintech & Mobile Banking,
+  Food Delivery & Restaurant App, Health & Fitness App, Dating & Social App,
+  Productivity & SaaS App, E-Commerce & Marketplace App, Gaming & Mobile Gaming,
+  Education & Learning App, Travel & Navigation App
+- Agency & Creative (15 sektor): Branding & Design Agency, Motion Design Studio,
+  Video Production Studio, Creative Agency, Social Media Agency, Marketing Agency,
+  Advertising Agency, UI/UX Design Studio, 3D & VFX Studio,
+  Illustration & Art Studio, Photography Studio, PR & Communications Agency,
+  Content Creation Agency, Freelance Designer, Independent Animator
+
+## SCHEDULER (scheduler.py)
+Parameter: end_date, count, start_date (opsional), shuffle
+- start_date = hari ini atau kosong → range mulai dari now + 2 jam
+- start_date = besok atau lebih     → range mulai dari 02:00 pagi hari itu
+- range_end = end_date 23:59:59
+- Distribusi merata, interval rounded ke menit terdekat
+
+## EXPORT CSV FLOW (3 STEP)
+Step 1: Generate CSV Preview
+  - Pilih enable/disable scheduling
+  - Pilih start_date + end_date
+  - Klik "Generate CSV Preview" → isi tabel editor, TIDAK langsung upload
+Step 2: Edit CSV
+  - st.data_editor — semua kolom editable (Title, Description, Board, Keywords, dll)
+  - Board pakai SelectboxColumn dengan opsi BOARDS
+Step 3: Upload ke Dropbox
+  - Klik "Upload CSV ke Dropbox" → baru simpan ke Dropbox
+  - Tampilkan path + tombol "Upload to Pinterest"
+
+## BOARDS (hardcoded)
+- Logo Animations
+- E Sports Gaming Logo Animations
+- Famous Brand Logo Animations
+- Brand Identity in Motion
+
+## CSV COLUMNS
+Title, Video URL, Pinterest board, Thumbnail, Description, Link, Publish date, Keywords
+
+## CSV NAMING
+- Tab IG:       bulk_logo_{session_folder}.csv
+- Tab Direct:   NON-IG_bulk_logo_{session_folder}.csv
+- Campuran:     bulk_logo_mixed_{session_folder}.csv
+
+## CTA VARIANTS (14 rotasi)
+Title dan description pakai CTA index berbeda (index & index+1).
+Semua CTA sekarang soft-sell, tidak hard-sell seperti versi lama.
+Contoh: "Inspired by this? Our bio link connects you with the right motion designer 🔗"
 
 ## DROPBOX CONFIG
 - Permission: Scoped App (App Folder)
-- App name: SVGI Pinterest
-- App Folder: /Apps/SVGI Pinterest/
-- DROPBOX_FOLDER = "/"
+- App Folder path: /Apps/SVGI Pinterest/
+- DROPBOX_FOLDER = "/" di secrets
 - Auth: OAuth2 Refresh Token (permanent)
 - App key: l1c50p00605pykv
+- Shared link format: dl.dropboxusercontent.com dengan ?dl=1
+- dropbox_client.py:
+  * upload_and_get_link() → video, return direct link
+  * upload_csv()          → CSV bulk, return dropbox path
 
 ## STREAMLIT SECRETS (template)
 GROQ_API_KEY = "..."
@@ -170,47 +176,40 @@ DROPBOX_REFRESH_TOKEN = "..."
 DROPBOX_FOLDER = "/"
 AFFILIATE_LINK = ""
 
+## REQUIREMENTS.TXT
+streamlit>=1.35.0
+yt-dlp>=2024.1.0
+dropbox>=11.36.0
+groq>=0.9.0
+pandas>=2.0.0
+requests>=2.31.0
+imageio-ffmpeg>=0.4.9
+
+## KNOWN ISSUES & FIXES
+- yt-dlp carousel: "No video formats found" → fix via _pick_entry + ignoreerrors
+- yt-dlp return display name bukan username → solved via uploader_url parsing
+- Dropbox access token expired 4 jam → solved via OAuth2 refresh token
+- st.data_editor segfault Python 3.14 + pandas 3.x → pakai st.dataframe (lama)
+  sekarang sudah kembali ke st.data_editor untuk queue dan CSV editor
+- use_container_width deprecated → diganti width=1400
+- Variable 'col' conflict di dict comprehension → diganti jadi 'c'
+- Gemini deprecated → migrated ke Groq llama-3.3-70b-versatile
+- Dropbox App Folder token tidak bisa akses root → gunakan DROPBOX_FOLDER="/"
+- Model generate 3D → instruksi "never mention 3D" di prompt
+- Preview video Safari iPadOS → tambah link_button fallback
+- GIF dari direct URL → convert ke MP4 via ffmpeg (utils/media.py) sebelum upload
+
+## DEPLOYMENT
+- GitHub repo: tokohafsa/svgi-pinterest (public, required Streamlit Cloud free tier)
+- Streamlit Cloud: share.streamlit.io
+- Auto-reboot saat push ke GitHub
+- secrets.toml ada di .gitignore
+
 ## AFFILIATE STATUS
-- Fiverr via Awin: APPROVED ✅
-- Payment: via Payoneer (akun lama ditutup, perlu buka baru) atau ACH (butuh bank US)
-- Link field Tab 1: otomatis URL IG atau AFFILIATE_LINK di secrets
-- Link field Tab 2: dinamis per pin (field manual)
-- Strategi: affiliate di bio saja, link pin ke konten original
+- Pending, sambil fokus naikkan traffic dulu
+- Fiverr via Awin: applied, pending (Indonesia tidak di region list)
+- Payoneer: akun ditutup, annual fee barrier
 
 ## PINTEREST BIO
 "Logo animations from talented creators around the world.
 Want yours animated? Check the link 🔗"
-
-## DEPLOYMENT
-- GitHub repo: public
-- Streamlit Cloud: share.streamlit.io
-- Auto-reboot saat push ke GitHub
-- secrets.toml di .gitignore
-
-## KNOWN ISSUES & FIXES
-- yt-dlp return nama display bukan username → uploader_url parsing
-- Dropbox token expired 4 jam → OAuth2 refresh token
-- st.data_editor segfault Python 3.14 → diganti st.dataframe
-- use_container_width deprecated → width=1400
-- CSV export button → simpan ke session_state dulu
-- Variable 'col' conflict → diganti 'c'
-- gemini deprecated → Groq llama-3.3-70b-versatile
-- Dropbox App Folder → DROPBOX_FOLDER="/"
-- Model sebut 3D → instruksi eksplisit di prompt
-- Safari iPadOS video → link_button fallback
-- Thumbnail stale dari video sebelumnya → clear frames + session_state reset
-- Layout preview side-by-side → rewrite section langsung
-- Thumbnail image grid → ffmpeg extract per detik
-- GIF support → download_direct + convert_to_mp4 via ffmpeg
-- StreamlitAPIException saat Add to Queue → tidak boleh assign langsung ke session_state
-  key yang aktif sebagai widget key (ig_url_input / direct_url_input)
-  → fix: gunakan del st.session_state[key] bukan assignment langsung
-- Field tidak clear setelah Add to Queue → tambah helper _clear_ig_fields() dan
-  _clear_direct_fields() yang hapus semua widget keys (URL, pin name, board, sector,
-  credit, link, title, desc, keywords) sebelum st.rerun()
-  → urutan aman: pins.append() dulu → clear fields → rerun
-- Tab Non-IG credit tanpa prefix "Credit: " → override lines[0] di description
-  sekarang otomatis tambah prefix jika belum ada, tidak dobel jika sudah ada
-- Board baru "Brand Identity in Motion" → sudah terdaftar di BOARDS list (app.py)
-  dan sudah ada entry di BOARD_TITLE_SUFFIX, BOARDS_KEYWORD_CONTEXT, BOARD_SEO_TONE
-  di model.py → tidak perlu perubahan model.py
