@@ -132,6 +132,26 @@ CTA_VARIANTS = [
     "Bio link has everything you need to get your brand animated ✨",
 ]
 
+# CTA khusus untuk title pin — pendek, max 20 chars, supaya tidak truncate di Pinterest
+# Budget: Pinterest limit 100 chars. Suffix "Animated Brand Identity" = 24 chars.
+# Sisa untuk brand name + ". " + CTA = 74 chars — aman untuk nama brand normal.
+CTA_TITLE_VARIANTS = [
+    "See our bio link 🔗",
+    "Check our bio link ✨",
+    "Tap the bio link 🎬",
+    "Bio link 🔗",
+    "Visit our bio link 💡",
+    "Link in bio 🎯",
+    "See bio link 🔗",
+    "Check bio link ✨",
+    "Tap bio link 🎬",
+    "Bio link below 🔗",
+    "Find it in bio 💡",
+    "Open bio link 🎯",
+    "Bio link inside 🔗",
+    "Link in our bio ✨",
+]
+
 
 def detect_credits(caption: str, uploader_id: str, api_key: str) -> dict:
     """Detect client, animator, logo_maker, brand_name from caption only."""
