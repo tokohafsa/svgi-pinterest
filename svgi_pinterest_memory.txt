@@ -1,5 +1,5 @@
 SVGI PINTEREST PIPELINE — MEMORY FILE
-Generated: 2026-07-23 (updated v7)
+Generated: 2026-07-25 (updated v7)
 ======================================
 
 ## AKUN
@@ -37,11 +37,11 @@ svgi-pinterest/
     └── media.py                  ← download direct URL, convert GIF→MP4, get duration
 
 ## PIPELINE FLOW — TAB 1 (Instagram)
-1. New Session → buat folder Dropbox: /2026-07-23_1430
+1. New Session → buat folder Dropbox: /2026-07-25_1430
 2. Paste URL Instagram reel/post (support carousel dengan ?img_index=N)
 3. Fetch metadata (yt-dlp) + download video
 4. Upload video ke Dropbox
-5. Extract 8 frame thumbnail (ffmpeg)
+5. Extract frames thumbnail detik 1 sampai max 30 (ffmpeg)
 6. Preview video + thumbnail grid (klik untuk pilih, border merah tanda terpilih)
 7. Raw caption ditampilkan (read-only)
 8. Credits: field Poster @ + @Mentions dari caption (auto-detect, editable)
@@ -56,21 +56,30 @@ svgi-pinterest/
 ## PIPELINE FLOW — TAB 2 (Direct URL / GIF)
 1. Paste direct URL (.mp4 / .mov / .gif)
 2. Download file + extract frames thumbnail
-3. Preview video/GIF + thumbnail grid
+3. Preview video + thumbnail grid
 4. Input manual: Nama pin, Credit animator (plain text), Link ke konten asli (dinamis per pin)
 5. Pilih Board + Sector
 6. Generate → review/edit Title, Description, Keywords
 7. Add to Queue
 8. Generate CSV Preview → Edit CSV → Upload ke Dropbox (3 step terpisah)
-   Nama file CSV: NON-IG_bulk_logo_{session_folder}.csv
+
+Catatan:
+- GIF: download → convert ke MP4 via ffmpeg → upload Dropbox → Video URL = Dropbox link
+- MP4/MOV: download untuk thumbnail saja → Video URL = direct URL (tidak upload Dropbox)
 
 ## CAROUSEL FIX (instagram.py)
-- _parse_img_index(url): parse ?img_index=N dari URL
+- _parse_img_index(url): parse ?img_index=N dari URL (1-based, sama dengan Pinterest)
 - _strip_img_index(url): buang parameter sebelum kirim ke yt-dlp
-- yt-dlp fetch seluruh carousel dengan ignoreerrors=True
-- _pick_entry(info, img_index): filter entries yang video (bukan foto),
+- yt-dlp fetch seluruh carousel dengan ignoreerrors=True (tidak crash kalau ada foto)
+- _pick_entry(info, img_index): filter entries yang video (cek formats, vcodec, ext),
   lalu ambil entry ke-N sesuai img_index (1-based)
-- Fallback: kalau tidak bisa filter, pakai index mentah
+- Fallback: kalau tidak bisa filter, pakai index mentah dari entries
+
+## SESSION STATE (app.py)
+- pins, cta_counter, stage, current        ← Tab IG
+- stage_direct, current_direct             ← Tab Direct
+- session_folder                           ← shared
+- csv_preview, csv_fname, csv_uploaded_path ← shared export flow
 
 ## CREDIT LINE FORMAT
 - Ada @mention di caption:
@@ -81,61 +90,104 @@ svgi-pinterest/
   "Credit: {nama animator yang diinput}" — plain text, tidak ada @poster
 
 ## FORMAT TITLE
-{Nama} {suffix board}
-Suffix per board:
+{Nama} {suffix board}. {CTA_TITLE}
+
+Suffix per board (BOARD_TITLE_SUFFIX di model.py):
 - Logo Animations             → "Logo Animation"
 - E Sports Gaming ...         → "Logo Animation"
 - Famous Brand ...            → "Logo Animation"
 - Brand Identity in Motion    → "Animated Brand Identity"
 
-Contoh board biasa: "Vortex Logo Animation. [CTA]"
-Contoh Brand Identity: "Nike Animated Brand Identity. [CTA]"
+Contoh board biasa:  "Vortex Logo Animation. See bio link 🔗"
+Contoh Brand Identity: "Nike Animated Brand Identity. Bio link 🔗"
+
+## CTA TITLE — A/B TEST OTOMATIS (_fit_cta_for_title)
+Pinterest limit title = 100 chars. CTA title dipisah dari CTA description.
+
+CTA_TITLE_VARIANTS (14 varian, max ~20 chars):
+- "See our bio link 🔗", "Check our bio link ✨", "Tap the bio link 🎬",
+  "Bio link 🔗", "Visit our bio link 💡", "Link in bio 🎯", dll.
+
+Logika _fit_cta_for_title() — pure Python, tanpa Groq:
+1. Coba preferred_cta (CTA_TITLE_VARIANTS[cta_index])
+2. Coba semua CTA_TITLE_VARIANTS secara berurutan, ambil yang pertama fit
+3. Fallback ke varian terpendek, truncate di batas kata kalau masih tidak fit
+
+## CTA DESCRIPTION (CTA_VARIANTS)
+14 rotasi soft-sell, dipakai di baris terakhir description.
+Index description = cta_index % 14, berbeda dari index title.
+Contoh: "Inspired by this? Our bio link connects you with the right motion designer 🔗"
 
 ## FORMAT DESCRIPTION
 Line 1: {credit_line}
-Line 2-3: seo_body (2 kalimat SEO, max 200 chars)
-Line 4: {cta_desc}
+Line 2-3: seo_body (2 kalimat SEO natural, max 200 chars)
+Line 4: {cta_desc dari CTA_VARIANTS}
 
 Catatan:
 - Title TIDAK diulang di baris pertama description
-- Board "Brand Identity in Motion": seo_body harus bicara tentang brand system
-  dan visual identity, bukan logo reveal atau logo intro
 - Jangan sebut 3D, three-dimensional
+- Board "Brand Identity in Motion": seo_body bicara tentang brand system
+  dan visual identity, BUKAN logo reveal atau logo intro
 
-## SECTOR SEO HINT
-model.py punya dict SECTOR_SEO_HINT — 49 sektor dengan instruksi spesifik
-yang diinjeksi ke prompt Groq untuk guide seo_body dan keywords per sektor.
+## BOARD SEO TONE (BOARD_SEO_TONE di model.py)
+Instruksi spesifik per board yang diinjeksi ke prompt Groq:
+- Logo Animations: fokus animasi, logo reveal, motion style
+- E Sports Gaming: fokus gaming energy, esports identity, team branding
+- Famous Brand: fokus iconic brand, corporate identity, global presence
+- Brand Identity in Motion: fokus brand storytelling, visual identity system,
+  motion branding — instruksi tambahan: do NOT focus on just the logo
 
-Kategori sektor:
-- General (33 sektor): Automotive, Beauty, Fashion, Finance, dll
-- Mobile App (10 sektor): Mobile App & Startup, Fintech & Mobile Banking,
+## SECTOR SEO HINT (SECTOR_SEO_HINT di model.py)
+49 sektor, masing-masing punya instruksi + keyword spesifik yang diinjeksi ke prompt.
+
+Kategori:
+- General (33): Automotive, Aviation, Beauty, Construction, Crypto, Education,
+  Entertainment, E-Sports, Fashion, Finance, Food, Government, Health, Hotels,
+  Insurance, Law, Logistics, Luxury, Manufacturing, Music, NFT, Non-Profit,
+  Outdoor, Pets, Photography, Religion, Retail, Software, Sports, Technology,
+  Telecommunications, Travel, YouTube
+- Mobile App (10): Mobile App & Startup, Fintech & Mobile Banking,
   Food Delivery & Restaurant App, Health & Fitness App, Dating & Social App,
   Productivity & SaaS App, E-Commerce & Marketplace App, Gaming & Mobile Gaming,
   Education & Learning App, Travel & Navigation App
-- Agency & Creative (15 sektor): Branding & Design Agency, Motion Design Studio,
+- Agency & Creative (15): Branding & Design Agency, Motion Design Studio,
   Video Production Studio, Creative Agency, Social Media Agency, Marketing Agency,
   Advertising Agency, UI/UX Design Studio, 3D & VFX Studio,
   Illustration & Art Studio, Photography Studio, PR & Communications Agency,
   Content Creation Agency, Freelance Designer, Independent Animator
 
+## QUEUE (shared, kedua tab)
+- st.data_editor (editable langsung)
+- Board pakai SelectboxColumn dengan opsi BOARDS
+- Sync ke session_state.pins setiap render
+
+## EXPORT CSV FLOW (3 STEP — shared kedua tab)
+Step 1 — Schedule & Generate CSV Preview:
+  - Toggle scheduling ON/OFF
+  - Pilih start_date + end_date (kalau ON)
+  - start_date hari ini = now+2h, besok ke atas = 02:00 pagi hari itu
+  - Klik "Generate CSV Preview" → isi csv_preview di session_state, TIDAK upload
+Step 2 — Edit CSV:
+  - st.data_editor semua kolom editable
+  - Sync ke csv_preview
+Step 3 — Upload ke Dropbox:
+  - Klik "Upload CSV ke Dropbox" → simpan ke Dropbox
+  - Tampilkan path Dropbox + tombol "Upload to Pinterest"
+
+## CSV NAMING (auto-detect dari Link field)
+- Semua IG:      bulk_logo_{session_folder}.csv
+- Semua Direct:  NON-IG_bulk_logo_{session_folder}.csv
+- Campuran:      bulk_logo_mixed_{session_folder}.csv
+
+## CSV COLUMNS
+Title, Video URL, Pinterest board, Thumbnail, Description, Link, Publish date, Keywords
+
 ## SCHEDULER (scheduler.py)
-Parameter: end_date, count, start_date (opsional), shuffle
-- start_date = hari ini atau kosong → range mulai dari now + 2 jam
-- start_date = besok atau lebih     → range mulai dari 02:00 pagi hari itu
+generate_schedule(end_date, count, start_date=None, shuffle=False, _now=None)
+- start_date = None atau hari ini → range_start = now + 2 jam
+- start_date = besok atau lebih  → range_start = 02:00 pagi hari itu
 - range_end = end_date 23:59:59
 - Distribusi merata, interval rounded ke menit terdekat
-
-## EXPORT CSV FLOW (3 STEP)
-Step 1: Generate CSV Preview
-  - Pilih enable/disable scheduling
-  - Pilih start_date + end_date
-  - Klik "Generate CSV Preview" → isi tabel editor, TIDAK langsung upload
-Step 2: Edit CSV
-  - st.data_editor — semua kolom editable (Title, Description, Board, Keywords, dll)
-  - Board pakai SelectboxColumn dengan opsi BOARDS
-Step 3: Upload ke Dropbox
-  - Klik "Upload CSV ke Dropbox" → baru simpan ke Dropbox
-  - Tampilkan path + tombol "Upload to Pinterest"
 
 ## BOARDS (hardcoded)
 - Logo Animations
@@ -143,24 +195,11 @@ Step 3: Upload ke Dropbox
 - Famous Brand Logo Animations
 - Brand Identity in Motion
 
-## CSV COLUMNS
-Title, Video URL, Pinterest board, Thumbnail, Description, Link, Publish date, Keywords
-
-## CSV NAMING
-- Tab IG:       bulk_logo_{session_folder}.csv
-- Tab Direct:   NON-IG_bulk_logo_{session_folder}.csv
-- Campuran:     bulk_logo_mixed_{session_folder}.csv
-
-## CTA VARIANTS (14 rotasi)
-Title dan description pakai CTA index berbeda (index & index+1).
-Semua CTA sekarang soft-sell, tidak hard-sell seperti versi lama.
-Contoh: "Inspired by this? Our bio link connects you with the right motion designer 🔗"
-
 ## DROPBOX CONFIG
 - Permission: Scoped App (App Folder)
 - App Folder path: /Apps/SVGI Pinterest/
 - DROPBOX_FOLDER = "/" di secrets
-- Auth: OAuth2 Refresh Token (permanent)
+- Auth: OAuth2 Refresh Token (permanent, tidak expired)
 - App key: l1c50p00605pykv
 - Shared link format: dl.dropboxusercontent.com dengan ?dl=1
 - dropbox_client.py:
@@ -185,19 +224,41 @@ pandas>=2.0.0
 requests>=2.31.0
 imageio-ffmpeg>=0.4.9
 
+## BEFORE vs AFTER (v6 → v7)
+| Area              | Before (v6)                        | After (v7)                              |
+|-------------------|------------------------------------|-----------------------------------------|
+| Tab               | 1 tab IG only                      | 2 tab: Instagram + Direct URL           |
+| Source video      | IG via yt-dlp                      | IG + Direct URL (.mp4/.mov/.gif)        |
+| GIF               | Tidak ada                          | Download → MP4 → upload Dropbox         |
+| MP4 direct        | Tidak ada                          | Pakai URL langsung, tanpa upload        |
+| Carousel          | playlist_items (crash jika foto)   | _pick_entry + ignoreerrors              |
+| Credits UI        | 4 field (Brand/Client/Anim/Logo)   | 2 field + mentions + preview realtime   |
+| Credit format     | for @client | Credit: @anim          | Credit: @mentions | from @poster        |
+| Title suffix      | Semua: "Logo Animation"            | Per board, Brand Identity = berbeda     |
+| CTA title         | CTA_VARIANTS panjang, sering over  | CTA_TITLE_VARIANTS pendek + A/B test    |
+| Queue             | st.dataframe (read-only)           | st.data_editor (editable)               |
+| Export flow       | 1 klik langsung upload             | 3 step: Preview → Edit → Upload         |
+| Scheduler         | end_date saja                      | + start_date dengan logika jam          |
+| Sektor            | 34                                 | 49 (+ Mobile App + Agency & Creative)   |
+| SECTOR_SEO_HINT   | Tidak ada                          | 49 mapping diinjeksi ke prompt          |
+| BOARD_SEO_TONE    | Tidak ada                          | Per board + instruksi Brand Identity    |
+| utils/media.py    | Tidak ada                          | Baru: download_direct, convert, duration|
+| Session state     | 5 key                              | 7 key (+ stage_direct, current_direct)  |
+| CSV naming        | bulk_logo_ saja                    | Auto-detect IG/NON-IG/mixed             |
+
 ## KNOWN ISSUES & FIXES
-- yt-dlp carousel: "No video formats found" → fix via _pick_entry + ignoreerrors
+- yt-dlp carousel "No video formats found" → fix via _pick_entry + ignoreerrors
 - yt-dlp return display name bukan username → solved via uploader_url parsing
 - Dropbox access token expired 4 jam → solved via OAuth2 refresh token
-- st.data_editor segfault Python 3.14 + pandas 3.x → pakai st.dataframe (lama)
-  sekarang sudah kembali ke st.data_editor untuk queue dan CSV editor
+- st.data_editor segfault Python 3.14 + pandas 3.x → sudah kembali pakai data_editor
 - use_container_width deprecated → diganti width=1400
 - Variable 'col' conflict di dict comprehension → diganti jadi 'c'
 - Gemini deprecated → migrated ke Groq llama-3.3-70b-versatile
-- Dropbox App Folder token tidak bisa akses root → gunakan DROPBOX_FOLDER="/"
+- Dropbox App Folder token tidak bisa akses root → DROPBOX_FOLDER="/"
 - Model generate 3D → instruksi "never mention 3D" di prompt
 - Preview video Safari iPadOS → tambah link_button fallback
-- GIF dari direct URL → convert ke MP4 via ffmpeg (utils/media.py) sebelum upload
+- GIF dari direct URL → convert ke MP4 via ffmpeg (utils/media.py)
+- Title truncated di Pinterest → CTA_TITLE_VARIANTS + _fit_cta_for_title()
 
 ## DEPLOYMENT
 - GitHub repo: tokohafsa/svgi-pinterest (public, required Streamlit Cloud free tier)
