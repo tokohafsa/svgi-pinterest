@@ -1,5 +1,7 @@
 # SVGI Pinterest Pipeline
+
 https://svgi-pin.streamlit.app
+
 Instagram → Dropbox → Pinterest CSV automation for logo animation niche.
 
 ## Deploy ke Streamlit Cloud
