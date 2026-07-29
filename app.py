@@ -1,1144 +1,698 @@
-# ============================================================
-# HASFLO PINTEREST - APP (PROMPT GENERATOR)
-# Streamlit UI — Generate Prompt Collage untuk Image Generator
-# ============================================================
-
-import os
-import re
-import json
-import io
 import streamlit as st
-from datetime import datetime
-from zoneinfo import ZoneInfo
-from PIL import Image
+import pandas as pd
+import tempfile
+import os
+import hashlib
+from datetime import datetime, date, timedelta
+import io
 
-from image_generator import (
-    build_prompt_json,
-    LAYOUT_OPTIONS,
-    CANVAS_OPTIONS,
-)
+from utils.instagram import fetch_ig_metadata, download_ig_video
+from utils.dropbox_client import upload_and_get_link, upload_csv
+from utils.model import detect_credits, generate_content, SECTORS, BOARD_TITLE_SUFFIX, _build_credit_line
+from utils.scheduler import generate_schedule
+from utils.thumbnail import extract_frames, format_timestamp
+from utils.media import download_direct, convert_to_mp4, get_duration
 
-WIB = ZoneInfo("Asia/Jakarta")
+st.set_page_config(page_title="SVGI Pinterest Tool", page_icon="🎬", layout="wide")
 
+# ── Secrets ───────────────────────────────────────────────────────────────────
+try:
+    GROQ_KEY = st.secrets["GROQ_API_KEY"]
+    DROPBOX_TOKEN = st.secrets.get("DROPBOX_TOKEN", "")
+    DROPBOX_APP_KEY = st.secrets.get("DROPBOX_APP_KEY", "")
+    DROPBOX_APP_SECRET = st.secrets.get("DROPBOX_APP_SECRET", "")
+    DROPBOX_REFRESH_TOKEN = st.secrets.get("DROPBOX_REFRESH_TOKEN", "")
+except Exception:
+    st.error("⚠️ Secrets not configured. Edit .streamlit/secrets.toml")
+    st.stop()
 
-# ============================================================
-# HELPER — FIT IMAGE KE CANVAS DENGAN DOMINANT COLOR FILL
-# ============================================================
-
-def fit_to_canvas_dominant(img_bytes: bytes, canvas_w: int, canvas_h: int) -> bytes:
-    """
-    1. Crop border near-white (threshold 240) dari sisi gambar
-    2. Resize proporsional ke canvas_w x canvas_h
-    3. Fill sisa area dengan warna dominan gambar
-    Return: bytes JPEG
-    """
-    img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-
-    # ── Step 1: Crop near-white border (threshold 240) ──
-    try:
-        # Buat mask: pixel dianggap "putih" jika R,G,B semua >= 240
-        import numpy as np
-        arr      = np.array(img)
-        non_white = np.where(
-            (arr[:, :, 0] < 240) | (arr[:, :, 1] < 240) | (arr[:, :, 2] < 240)
-        )
-        if non_white[0].size > 0:
-            top    = int(non_white[0].min())
-            bottom = int(non_white[0].max()) + 1
-            left   = int(non_white[1].min())
-            right  = int(non_white[1].max()) + 1
-            img    = img.crop((left, top, right, bottom))
-    except Exception:
-        pass  # kalau numpy tidak ada, skip crop
-
-    # ── Step 2: Deteksi warna dominan ──
-    try:
-        quantized = img.quantize(colors=5, method=Image.Quantize.MEDIANCUT)
-        palette   = quantized.getpalette()
-        dominant  = tuple(palette[:3])
-    except Exception:
-        dominant  = (255, 255, 255)
-
-    # ── Step 3: Fit ke canvas dengan dominant color fill ──
-    img.thumbnail((canvas_w, canvas_h), Image.LANCZOS)
-    canvas   = Image.new("RGB", (canvas_w, canvas_h), dominant)
-    offset_x = (canvas_w - img.width) // 2
-    offset_y = (canvas_h - img.height) // 2
-    canvas.paste(img, (offset_x, offset_y))
-
-    buf = io.BytesIO()
-    canvas.save(buf, format="JPEG", quality=95)
-    return buf.getvalue()
+def _clear_ig_fields():
+    """Hapus semua widget keys tab Instagram dari session_state."""
+    for k in [
+        "ig_url_input", "ig_brand", "ig_poster", "ig_mentions",
+        "ig_pin_name", "ig_board", "ig_sector",
+        "ig_title", "ig_desc", "ig_kw",
+    ]:
+        if k in st.session_state:
+            del st.session_state[k]
 
 
-st.set_page_config(page_title="HASflo Prompt Generator", page_icon="🌸", layout="wide")
-
-with st.sidebar:
-    st.markdown("### 🌸 HASflo Prompt Generator")
-    st.caption(f"WIB: {datetime.now(WIB).strftime('%d %b %Y %H:%M')}")
-    st.link_button("📌 Pinterest Pin Builder", "https://id.pinterest.com/pin-builder/", use_container_width=True)
-    st.link_button("🌸 HAS_flo Pinterest", "https://id.pinterest.com/HAS_flo/", use_container_width=True)
-    st.link_button("🤖 ChatGPT", "https://chatgpt.com/", use_container_width=True)
-    st.link_button("🛒 Shopee Affiliate Custom Link", "https://affiliate.shopee.co.id/offer/custom_link", use_container_width=True)
-    st.link_button("💾 GitHub Repo", "https://github.com/tokohafsa/hasflo-pin", use_container_width=True)
-    st.divider()
-    st.caption("File output tersimpan di folder `output/`")
-
-BOARD_HIJAB  = "Fashion Outfit Hijab Motif Bunga"
-BOARD_MODERN = "Fashion Outfit Modern Motif Bunga"
-
-BOARD_SECTIONS_MAP = {
-    BOARD_HIJAB:  ["Dress", "Blouse", "Tunik", "One Set", "Outer"],
-    BOARD_MODERN: ["Dress", "Blouse", "One Set", "Outer"],
-}
-
-SECTION_MAP = {
-    "dress":   "Dress",
-    "blouse":  "Blouse",
-    "tunik":   "Tunik",
-    "outer":   "Outer",
-    "setelan": "One Set",
-}
-
-PRODUCT_TYPE_KEYWORDS = {
-    "dress":   ["dress", "gamis", "terusan"],
-    "blouse":  ["blouse", "atasan", "kemeja"],
-    "tunik":   ["tunik"],
-    "outer":   ["outer", "jaket", "cardigan", "sweater"],
-    "setelan": ["setelan", "one set", "co-ord"],
-}
-
-PRODUCT_TYPE_LABELS = {
-    "dress":   "Dress",
-    "blouse":  "Blouse",
-    "tunik":   "Tunik",
-    "outer":   "Outer",
-    "setelan": "Setelan",
-}
-
-SEO_KEYWORDS = {
-    "dress": [
-        "OOTD dress motif bunga", "dress motif bunga", "inspirasi outfit dress floral",
-        "dress bunga wanita", "outfit kondangan motif bunga", "dress midi floral",
-        "baju pesta motif bunga", "inspirasi OOTD wanita Indonesia",
-        "dress floral elegan", "fashion wanita motif bunga",
-    ],
-    "blouse": [
-        "OOTD blouse motif bunga", "blouse motif bunga", "inspirasi outfit blouse floral",
-        "atasan bunga wanita", "outfit kerja motif bunga", "blouse floral casual",
-        "kemeja motif bunga wanita", "inspirasi OOTD atasan bunga",
-        "fashion atasan motif bunga", "blouse wanita Indonesia",
-    ],
-    "tunik": [
-        "OOTD tunik motif bunga", "tunik motif bunga", "inspirasi outfit tunik floral",
-        "tunik bunga muslimah", "baju tunik motif bunga", "tunik floral hijab",
-        "outfit tunik wanita Indonesia", "inspirasi OOTD tunik bunga",
-        "fashion muslimah motif bunga", "tunik casual motif bunga",
-    ],
-    "outer": [
-        "OOTD outer motif bunga", "outer motif bunga", "inspirasi outfit outer floral",
-        "cardigan bunga wanita", "jaket motif bunga wanita", "layering outfit motif bunga",
-        "outer floral casual", "inspirasi OOTD outer bunga",
-        "fashion outer motif bunga", "cardigan floral wanita Indonesia",
-    ],
-    "setelan": [
-        "OOTD setelan motif bunga", "setelan motif bunga", "inspirasi outfit setelan floral",
-        "baju setelan bunga wanita", "co-ord set motif bunga", "matching set motif bunga",
-        "setelan floral wanita", "inspirasi OOTD setelan bunga",
-        "fashion setelan motif bunga", "setelan casual motif bunga",
-    ],
-}
+def _clear_direct_fields():
+    """Hapus semua widget keys tab Direct URL dari session_state."""
+    for k in [
+        "direct_url_input", "dt_pin_name", "dt_board", "dt_sector",
+        "dt_credit", "dt_link",
+        "dt_title", "dt_desc", "dt_kw",
+    ]:
+        if k in st.session_state:
+            del st.session_state[k]
 
 
-def detect_product_type(judul: str) -> str:
-    judul_lower = judul.lower()
-    for tipe, keywords in PRODUCT_TYPE_KEYWORDS.items():
-        if any(kw in judul_lower for kw in keywords):
-            return tipe
-    return "dress"
-
-
-def get_board_from_hijab(is_hijab: bool, product_type: str) -> str:
-    if product_type == "tunik":
-        return BOARD_HIJAB
-    return BOARD_HIJAB if is_hijab else BOARD_MODERN
-
-
-def scan_model_files(is_hijab: bool, models_dir: str = None) -> list:
-    if models_dir is None:
-        models_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "models")
-    if not os.path.isdir(models_dir):
-        return []
-    exts = {".png", ".jpg", ".jpeg", ".webp", ".PNG", ".JPG", ".JPEG", ".WEBP"}
-    files = sorted([f for f in os.listdir(models_dir) if os.path.splitext(f)[1].lower() in exts])
-    result = []
-    for f in files:
-        stem = os.path.splitext(f)[0]
-        has_hijab_tag = "hijab" in stem.lower()
-        if is_hijab and has_hijab_tag:
-            result.append(stem)
-        elif not is_hijab and not has_hijab_tag:
-            result.append(stem)
-    return result
-
-
-CLEAR_KEYS = [
-    "image_urls", "url_slots", "judul_input_field",
-    "shopee_affiliate_link", "generated_title", "generated_desc",
-    "title_desc_done", "_product_type_val", "_judul_checked",
-    "last_prompt_json", "use_model_ref", "selected_model_name",
-    "canvas_size_label", "selected_board", "selected_section", "is_hijab",
-    "title_edit", "desc_edit",
+BOARDS = [
+    "Logo Animations",
+    "E Sports Gaming Logo Animations",
+    "Famous Brand Logo Animations",
+    "Brand Identity in Motion",
 ]
 
-defaults = {
-    "image_urls": [],
-    "url_slots": [""],
-    "judul_input_field": "",
-    "shopee_affiliate_link": "",
-    "generated_title": "",
-    "generated_desc": "",
-    "title_desc_done": False,
-    "_product_type_val": "dress",
-    "_judul_checked": False,
-    "selected_layout_name": LAYOUT_OPTIONS[0]["name"] if LAYOUT_OPTIONS else "",
-    "last_prompt_json": None,
-    "use_model_ref": False,
-    "selected_model_name": None,
-    "is_hijab": True,
-    "selected_board": BOARD_HIJAB,
-    "selected_section": "Dress",
-}
-for k, v in defaults.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
+CSV_COLUMNS = ["Title", "Video URL", "Pinterest board", "Thumbnail",
+               "Description", "Link", "Publish date", "Keywords"]
 
-# Default values untuk variabel yang dipakai downstream
-# Akan di-override jika _judul_checked = True dan user mengisi Step 3/4
-selected_model_name = None
-subject_desc = "female, warm Indonesian face, wearing hijab, 25 years old"
+# ── Session state ─────────────────────────────────────────────────────────────
+for key, default in {
+    "pins": [],
+    "cta_counter": 0,
+    "stage": "input",
+    "current": {},
+    "stage_direct": "input",
+    "current_direct": {},
+    "session_folder": "",
+}.items():
+    if key not in st.session_state:
+        st.session_state[key] = default
 
-st.title("🌸 HASflo Prompt Generator")
-st.caption("Generate prompt collage siap pakai untuk Midjourney, Gemini, atau ChatGPT.")
-st.divider()
+# ── Header ────────────────────────────────────────────────────────────────────
+st.title("🎬 SVGI Pinterest Pipeline")
 
-# ============================================================
-# STEP 1A — LINK AFFILIATE SHOPEE
-# ============================================================
+col_hdr, col_new = st.columns([4, 1])
+with col_hdr:
+    if st.session_state.session_folder:
+        st.caption(f"📁 Session folder: `{st.session_state.session_folder}`")
+    else:
+        st.caption("No active session. Click **New Session** to start.")
+with col_new:
+    if st.button("🆕 New Session", type="primary"):
+        today_str = date.today().strftime("%Y-%m-%d")
+        time_str = datetime.now().strftime("%H%M")
+        st.session_state.session_folder = f"/{today_str}_{time_str}"
+        st.session_state.pins = []
+        st.session_state.cta_counter = 0
+        st.session_state.stage = "input"
+        st.session_state.current = {}
+        st.session_state.stage_direct = "input"
+        st.session_state.current_direct = {}
+        if "csv_uploaded_path" in st.session_state:
+            del st.session_state["csv_uploaded_path"]
+        st.rerun()
 
-st.subheader("Step 1A — 🔗 Link Affiliate Shopee *(opsional)*")
-st.caption("Akan disertakan di deskripsi.txt dalam folder `ready_pin/` di Dropbox untuk agent Pinterest.")
-
-shopee_affiliate_link = st.text_input(
-    "Link affiliate Shopee:",
-    placeholder="https://s.shopee.co.id/AAFmsXfSnq.",
-    key="shopee_affiliate_link",
-)
-if shopee_affiliate_link.strip():
-    shopee_affiliate_link = shopee_affiliate_link.strip().rstrip(".")
-    st.markdown(f'✅ Link affiliate: <a href="{shopee_affiliate_link}" target="_blank">{shopee_affiliate_link}</a>', unsafe_allow_html=True)
+if not st.session_state.session_folder:
+    st.info("👆 Click **New Session** to create a dated folder in Dropbox and start adding pins.")
+    st.stop()
 
 st.divider()
 
-# ============================================================
-# STEP 1 — INPUT URL GAMBAR
-# ============================================================
+# ── Tabs ──────────────────────────────────────────────────────────────────────
+tab_ig, tab_direct = st.tabs(["📱 Instagram Source", "🌐 Direct URL Source"])
 
-st.header("Step 1 — Input URL Gambar Produk")
 
-if st.button("🗑️ Clear Semua — Input Baru", key="btn_clear_all"):
-    # Hapus semua url_slot_N widget keys dulu sebelum clear url_slots
-    _n_slots = len(st.session_state.get("url_slots", [""]))
-    for _i in range(_n_slots):
-        if f"url_slot_{_i}" in st.session_state:
-            del st.session_state[f"url_slot_{_i}"]
-    for k in CLEAR_KEYS:
-        if k in st.session_state:
-            del st.session_state[k]
-    for layout in LAYOUT_OPTIONS:
-        for suffix in ["n_photo_slots_", "highlight_"]:
-            key = f"{suffix}{layout['name']}"
-            if key in st.session_state:
-                del st.session_state[key]
-    st.session_state["url_slots"] = [""]
-    st.rerun()
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 1 — INSTAGRAM PIPELINE
+# ═══════════════════════════════════════════════════════════════════════════════
+with tab_ig:
+    st.subheader("① Instagram URL")
+    ig_url = st.text_input("Paste Instagram post / reel URL",
+                            placeholder="https://www.instagram.com/reel/xxx",
+                            key="ig_url_input")
 
-st.caption("Isi satu URL per field. Field baru muncul otomatis setelah field sebelumnya diisi.")
+    if ig_url and st.button("🔽 Fetch & Upload to Dropbox", type="primary", key="ig_fetch_btn"):
+        st.session_state.current = {}
+        st.session_state.stage = "input"
 
-if "url_slots" not in st.session_state or not st.session_state["url_slots"]:
-    st.session_state["url_slots"] = [""]
-
-for i in range(len(st.session_state["url_slots"])):
-    _col_url, _col_clr = st.columns([10, 1])
-    with _col_url:
-        st.session_state["url_slots"][i] = st.text_input(
-            f"URL gambar {i + 1}:",
-            value=st.session_state["url_slots"][i],
-            key=f"url_slot_{i}",
-            placeholder="https://down-id.img.susercontent.com/file/xxx.webp",
-        )
-    with _col_clr:
-        st.markdown("<div style='margin-top:28px'>", unsafe_allow_html=True)
-        if st.button("✕", key=f"clr_slot_{i}", help="Hapus URL ini"):
-            st.session_state["url_slots"].pop(i)
-            if f"url_slot_{i}" in st.session_state:
-                del st.session_state[f"url_slot_{i}"]
-            if not st.session_state["url_slots"]:
-                st.session_state["url_slots"] = [""]
-            st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
-
-if st.session_state["url_slots"][-1].strip():
-    st.session_state["url_slots"].append("")
-    st.rerun()
-
-urls_parsed = [u.strip() for u in st.session_state["url_slots"] if u.strip()]
-cleaned_urls = [re.sub(r"@resize_[^.]+", "", u) for u in urls_parsed]
-st.session_state["image_urls"] = cleaned_urls
-
-if cleaned_urls:
-    st.success(f"✅ {len(cleaned_urls)} URL — akan jadi {len(cleaned_urls)} referensi outfit di prompt.")
-    preview_cols = st.columns(min(len(cleaned_urls), 8))
-    for i, url in enumerate(cleaned_urls):
-        with preview_cols[i % 8]:
-            st.image(url, width=80)
-            st.caption(f"Ref {i + 1}")
-else:
-    st.session_state["image_urls"] = []
-
-import random as _random
-canvas_key_options = list(CANVAS_OPTIONS.keys())
-canvas_labels = [CANVAS_OPTIONS[k]["label"] for k in canvas_key_options]
-
-if "canvas_size_label" not in st.session_state:
-    st.session_state["canvas_size_label"] = _random.choice(canvas_labels)
-
-selected_canvas_label = st.selectbox("Ukuran canvas:", options=canvas_labels, key="canvas_size_label")
-selected_canvas_key = canvas_key_options[canvas_labels.index(selected_canvas_label)]
-
-st.divider()
-
-# ============================================================
-# STEP 2 — JUDUL PRODUK + CEK
-# ============================================================
-
-st.header("Step 2 — Judul Produk & Generate Title Pinterest")
-st.caption(
-    "Isi judul produk dari Shopee, klik **Cek Judul** untuk deteksi tipe outfit, "
-    "lalu pilih hijab/non-hijab untuk menentukan board."
-)
-
-judul_input = st.text_input(
-    "Judul produk (dari Shopee):",
-    placeholder="contoh: Dress Wanita Motif Bunga Premium Rayon Midi Terbaru",
-    key="judul_input_field",
-)
-
-can_cek = bool(judul_input.strip())
-
-if st.button("🔍 Cek Judul", disabled=not can_cek, key="btn_cek_judul"):
-    detected = detect_product_type(judul_input)
-    st.session_state["_product_type_val"] = detected
-    st.session_state["_judul_checked"] = True
-    st.session_state["title_desc_done"] = False
-
-# ============================================================
-# STEP 2B — SECTION + HIJAB + BOARD + GENERATE
-# (muncul setelah Cek Judul)
-# ============================================================
-
-if st.session_state.get("_judul_checked"):
-
-    st.markdown("---")
-    st.subheader("Step 2B — Board & Section")
-
-    _pt_options = ["dress", "blouse", "tunik", "outer", "setelan"]
-    _pt_default = st.session_state.get("_product_type_val", "dress")
-    _pt_index = _pt_options.index(_pt_default) if _pt_default in _pt_options else 0
-
-    st.info(f"✅ Tipe outfit terdeteksi: **{PRODUCT_TYPE_LABELS.get(_pt_default, _pt_default)}**")
-
-    col_pt, col_hijab = st.columns([1, 1])
-
-    with col_pt:
-        product_type = st.selectbox(
-            "Konfirmasi tipe outfit (Section):",
-            options=_pt_options,
-            index=_pt_index,
-            key="outfit_type_confirmed",
-            help="Auto-detect dari judul. Koreksi manual kalau perlu.",
-        )
-        st.session_state["_product_type_val"] = product_type
-
-    with col_hijab:
-        _tunik_lock = product_type == "tunik"
-        if _tunik_lock:
-            st.selectbox(
-                "Konten:",
-                options=["Hijab"],
-                index=0,
-                key="hijab_selector_locked",
-                disabled=True,
-                help="Tunik selalu masuk board Hijab.",
-            )
-            is_hijab = True
-        else:
-            _hijab_default_idx = 0 if st.session_state.get("is_hijab", True) else 1
-            _hijab_sel = st.selectbox(
-                "Konten:",
-                options=["Hijab", "Non-Hijab"],
-                index=_hijab_default_idx,
-                key="hijab_selector",
-                help="Menentukan board Pinterest dan filter model reference.",
-            )
-            is_hijab = (_hijab_sel == "Hijab")
-
-        st.session_state["is_hijab"] = is_hijab
-
-    selected_board   = get_board_from_hijab(is_hijab, product_type)
-    selected_section = SECTION_MAP.get(product_type, "Dress")
-    st.session_state["selected_board"]   = selected_board
-    st.session_state["selected_section"] = selected_section
-    st.caption(f"📌 Pin akan masuk: **{selected_board}** › **{selected_section}**")
-
-    st.markdown("---")
-
-    if st.button("✨ Generate Judul & Deskripsi", key="btn_gen_titledesc", type="primary"):
-        with st.spinner("Generating via Gemini..."):
+        with st.spinner("Fetching metadata from Instagram..."):
             try:
-                from _credentials import AI_API_KEY, AI_MODEL
-                from google import genai
-
-                client = genai.Client(api_key=AI_API_KEY)
-                label    = PRODUCT_TYPE_LABELS.get(product_type, "Busana")
-                keywords = ", ".join(SEO_KEYWORDS.get(product_type, [])[:6])
-
-                prompt_ai = f"""Kamu adalah asisten konten Pinterest untuk akun fashion wanita motif bunga Indonesia.
-
-Judul asli produk Shopee: {judul_input}
-Tipe produk: {product_type} ({label})
-Keyword SEO Pinterest yang tersedia: {keywords}
-
-TUGAS 1 — JUDUL Pinterest (max 100 karakter):
-- Format wajib: [Tipe Outfit] + "Motif Bunga" + ciri khas produk (bahan/potongan/panjang/warna jika ada di judul)
-- Contoh: "Dress Motif Bunga Midi Rayon Lengan Panjang", "Blouse Motif Bunga Oversized Casual"
-- Kata "OOTD" TIDAK perlu masuk judul — simpan untuk deskripsi
-- Natural, tidak hard-selling, tidak mengandung kata promo/diskon/murah
-
-TUGAS 2 — DESKRIPSI Pinterest (max 500 karakter):
-- Kalimat 1 WAJIB: salin judul asli produk Shopee APA ADANYA sebagai kalimat pertama — VERBATIM
-- Kalimat 2 WAJIB: harus mengandung kata "OOTD" dan "motif bunga"
-- Kalimat 3-4: masukkan minimal 3 keyword lain dari daftar secara natural
-- Seluruh deskripsi: Bahasa Indonesia, faktual, deskriptif, TIDAK persuasif
-- DILARANG: "dapatkan sekarang", "segera beli", "klik link", "harga spesial", "promo"
-
-Output HANYA JSON (tanpa markdown backtick):
-{{"title": "...", "description": "..."}}"""
-
-                response = client.models.generate_content(model=AI_MODEL, contents=prompt_ai)
-                text = response.text.replace("```json", "").replace("```", "").strip()
-                data = json.loads(text)
-
-                st.session_state["generated_title"] = data.get("title", "")[:100]
-                st.session_state["generated_desc"]  = data.get("description", "")[:500]
-                st.session_state["title_desc_done"]  = True
-
+                meta = fetch_ig_metadata(ig_url)
             except Exception as e:
-                st.error(f"❌ Gemini error: {e}")
-                st.session_state["title_desc_done"] = False
+                st.error(f"❌ Fetch failed: {e}")
+                st.stop()
 
-    if st.session_state.get("title_desc_done"):
-        st.markdown("---")
-        col_t, col_d = st.columns([1, 1])
+        with st.spinner("Downloading video..."):
+            try:
+                tmpdir = tempfile.mkdtemp()
+                video_path = download_ig_video(ig_url, tmpdir)
+            except Exception as e:
+                st.error(f"❌ Download failed: {e}")
+                st.stop()
 
-        with col_t:
-            st.markdown("**📌 Judul Pinterest** (edit kalau perlu):")
-            title_edited = st.text_area(
-                label="title_edit_area",
-                value=st.session_state["generated_title"],
-                height=80, max_chars=100,
-                key="title_edit", label_visibility="collapsed",
+        with st.spinner("Uploading to Dropbox..."):
+            try:
+                video_url = upload_and_get_link(
+                    video_path, st.session_state.session_folder,
+                    token=DROPBOX_TOKEN,
+                    app_key=DROPBOX_APP_KEY,
+                    app_secret=DROPBOX_APP_SECRET,
+                    refresh_token=DROPBOX_REFRESH_TOKEN,
+                )
+            except Exception as e:
+                st.error(f"❌ Dropbox upload failed: {e}")
+                st.stop()
+
+        with st.spinner("Detecting credits from caption..."):
+            credits = detect_credits(
+                caption=meta.get("description", ""),
+                uploader_id=meta.get("uploader_id", ""),
+                api_key=GROQ_KEY,
             )
-            st.caption(f"{'🟢' if len(title_edited) <= 100 else '🔴'} {len(title_edited)}/100 karakter")
-            st.code(title_edited, language=None)
+            # credits = {"brand_name": ..., "mentions": [...], "poster": "@uploader"}
 
-        with col_d:
-            st.markdown("**📝 Deskripsi Pinterest** (edit kalau perlu):")
-            desc_edited = st.text_area(
-                label="desc_edit_area",
-                value=st.session_state["generated_desc"],
-                height=150, max_chars=500,
-                key="desc_edit", label_visibility="collapsed",
-            )
-            st.caption(f"{'🟢' if len(desc_edited) <= 500 else '🔴'} {len(desc_edited)}/500 karakter")
-            st.code(desc_edited, language=None)
+        duration = int(meta.get("duration") or 15)
+        max_sec = min(duration, 30)
+        thumb_secs = list(range(1, max_sec + 1))
 
-st.divider()
+        with st.spinner("Extracting thumbnail previews..."):
+            frames = extract_frames(video_path, thumb_secs)
 
-# ============================================================
-# STEP 3 — MODEL REFERENCE
-# Hanya muncul setelah _judul_checked = True
-# → is_hijab sudah pasti ter-set dari Step 2B
-# ============================================================
-
-st.header("Step 3 — Model Reference *(opsional)*")
-
-if not st.session_state.get("_judul_checked"):
-    st.info("⬆️ Isi judul produk di Step 2 dan klik **Cek Judul** untuk melanjutkan.")
-else:
-    st.caption(
-        "Aktifkan untuk menyertakan gambar wajah/model sebagai referensi visual. "
-        "File model difilter otomatis berdasarkan pilihan Hijab/Non-Hijab di Step 2B."
-    )
-
-    _is_hijab_now = st.session_state.get("is_hijab", True)
-    MODEL_LIST = scan_model_files(_is_hijab_now)
-
-    use_model_ref = st.toggle(
-        "Gunakan Model Reference",
-        value=st.session_state.get("use_model_ref", False),
-        key="use_model_ref",
-        help="Gambar model dari assets/models/ akan diupload pertama ke GPT.",
-    )
-
-    if use_model_ref:
-        if not MODEL_LIST:
-            _tag = "hijab" if _is_hijab_now else "non-hijab"
-            _models_dir_dbg = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "models")
-            st.warning(
-                f"⚠️ Tidak ada file model {_tag} ditemukan di `assets/models/`. "
-                f"{'Tambahkan file dengan kata \"hijab\" di nama file.' if _is_hijab_now else 'Tambahkan file tanpa kata \"hijab\" di nama file.'}"
-            )
-            st.caption(f"🔍 Debug path: `{_models_dir_dbg}` — exists: `{os.path.isdir(_models_dir_dbg)}`")
-            if os.path.isdir(_models_dir_dbg):
-                _all_files = os.listdir(_models_dir_dbg)
-                st.caption(f"Files ditemukan: `{_all_files}`")
-        else:
-            selected_model_name = st.selectbox(
-                "Pilih model:",
-                options=MODEL_LIST,
-                key="selected_model_name",
-            )
-            model_exts = [".png", ".PNG", ".jpg", ".JPG", ".jpeg", ".JPEG", ".webp", ".WEBP"]
-            model_preview_path = None
-            if selected_model_name:
-                _models_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "models")
-                for ext in model_exts:
-                    candidate = os.path.join(_models_dir, selected_model_name + ext)
-                    if os.path.isfile(candidate):
-                        model_preview_path = candidate
-                        break
-            if model_preview_path:
-                col_mp, col_mi = st.columns([1, 3])
-                with col_mp:
-                    st.image(model_preview_path, width=100)
-                with col_mi:
-                    st.success(f"✅ Model: **{selected_model_name}**")
-                    st.caption("Gambar ini akan diupload ke GPT sebagai gambar pertama.")
-
-st.divider()
-
-# ============================================================
-# STEP 4 — SUBJECT
-# Hanya muncul setelah _judul_checked = True
-# → is_hijab sudah pasti ter-set, ras terkunci kalau hijab
-# ============================================================
-
-st.header("Step 4 — Deskripsi Subject")
-
-if not st.session_state.get("_judul_checked"):
-    st.info("⬆️ Isi judul produk di Step 2 dan klik **Cek Judul** untuk melanjutkan.")
-else:
-    _age_options = ["18 years old", "25 years old", "33 years old"]
-
-    # ── Deteksi nationality dari nama model (jika toggle model ON) ──
-    _use_model_now  = st.session_state.get("use_model_ref", False)
-    _model_name_now = st.session_state.get("selected_model_name", "") or ""
-    _model_lower    = _model_name_now.lower()
-    _is_hijab_subject = st.session_state.get("is_hijab", True)
-
-    # Deteksi tipe model dari nama file
-    _model_is_indo  = _use_model_now and (
-        _model_lower.startswith("indo") or "indonesian" in _model_lower
-    )
-    _model_is_asian = _use_model_now and (
-        _model_lower.startswith("asian") or "asian" in _model_lower
-    )
-
-    # Tentukan nationality options & lock state
-    if _use_model_now and _model_is_indo:
-        # Model Indo/IndoHijab → terkunci Indonesian
-        _nationality_options  = ["Indonesian"]
-        _nationality_disabled = True
-        _nationality_help     = "Terkunci Indonesian sesuai model reference yang dipilih."
-    elif _use_model_now and _model_is_asian:
-        # Model Asian → Korean, Chinese, Japanese (tanpa Indonesian)
-        _nationality_options  = ["Korean", "Chinese", "Japanese"]
-        _nationality_disabled = False
-        _nationality_help     = "Nationality disesuaikan dengan model Asian yang dipilih."
-    elif _is_hijab_subject:
-        # Hijab tanpa model → terkunci Indonesian
-        _nationality_options  = ["Indonesian"]
-        _nationality_disabled = True
-        _nationality_help     = "Terkunci Indonesian karena konten Hijab."
-    else:
-        # Default — bebas pilih
-        _nationality_options  = ["Indonesian", "Korean", "Chinese", "Japanese"]
-        _nationality_disabled = False
-        _nationality_help     = ""
-
-    col_s1, col_s2 = st.columns(2)
-
-    with col_s1:
-        subject_age = st.selectbox("Usia:", options=_age_options, key="subject_age")
-
-    with col_s2:
-        subject_nationality = st.selectbox(
-            "Nationality:",
-            options=_nationality_options,
-            key="subject_nationality",
-            disabled=_nationality_disabled,
-            help=_nationality_help,
-        )
-
-    subject_custom = st.text_input(
-        "Atau tulis sendiri (opsional, menggantikan pilihan di atas jika diisi):",
-        placeholder="contoh: female model, East African face, 30 years old, natural hair",
-        key="subject_custom",
-    )
-
-    if subject_custom.strip():
-        custom = subject_custom.strip()
-        subject_desc = f"female, {custom}" if "female" not in custom.lower() else custom
-    else:
-        nationality_map = {
-            "Indonesian": "warm Indonesian face",
-            "Korean":     "Korean face",
-            "Chinese":    "Chinese face",
-            "Japanese":   "Japanese face",
+        st.session_state.current = {
+            "ig_url": ig_url,
+            "video_url": video_url,
+            "caption": meta.get("description", ""),
+            "duration": duration,
+            "frames": frames,
+            "thumb_secs": thumb_secs,
+            **credits,
         }
-        nat_str       = nationality_map.get(subject_nationality, "warm Indonesian face")
-        hijab_str     = ", wearing hijab" if _is_hijab_subject else ", no hijab"
-        subject_desc  = f"female, {nat_str}{hijab_str}, {subject_age}"
+        st.session_state.stage = "uploaded"
+        st.rerun()
 
-    st.caption(f"Subject: `{subject_desc}`")
+    if st.session_state.stage in ("uploaded", "generated"):
+        cur = st.session_state.current
 
-st.divider()
+        st.divider()
+        st.subheader("② Preview")
+        st.markdown("<style>video { max-height: 280px; }</style>", unsafe_allow_html=True)
+        col_v, _ = st.columns([1, 2])
+        with col_v:
+            st.video(cur["video_url"])
+            st.link_button("🎬 Open in browser (Safari)", url=cur["video_url"])
 
-# ============================================================
-# STEP 5 — PILIH LAYOUT
-# ============================================================
+        st.divider()
+        st.subheader("Thumbnail timestamp")
+        frames = cur.get("frames", {})
+        thumb_secs = cur.get("thumb_secs", [])
+        selected_ts = cur.get("thumbnail", format_timestamp(thumb_secs[0]) if len(thumb_secs) > 0 else "0:01")
 
-st.header("Step 5 — Pilih Layout Collage")
-st.caption("Pilih satu layout referensi collage.")
-
-if not LAYOUT_OPTIONS:
-    st.warning("⚠️ Tidak ada layout ditemukan di folder `assets/`.")
-else:
-    if st.session_state.get("selected_layout_name") not in [l["name"] for l in LAYOUT_OPTIONS]:
-        st.session_state["selected_layout_name"] = LAYOUT_OPTIONS[0]["name"]
-
-    for row_start in range(0, len(LAYOUT_OPTIONS), 2):
-        row_layouts = LAYOUT_OPTIONS[row_start: row_start + 2]
-        row_cols = st.columns(2)
-
-        for col_idx, layout in enumerate(row_layouts):
-            with row_cols[col_idx]:
-                is_selected = st.session_state["selected_layout_name"] == layout["name"]
-
-                with st.container(border=is_selected):
-                    inner_col_img, inner_col_info = st.columns([1, 2])
-
-                    with inner_col_img:
-                        st.image(layout["preview_path"], use_container_width=True)
-
-                    with inner_col_info:
-                        st.markdown(f"**{layout['name'].upper()}**")
-                        tags_str = "  ".join(f"`{t}`" for t in layout.get("tags", []))
-                        if tags_str:
-                            st.markdown(tags_str)
-                        desc_short = layout.get("description", "")
-                        if len(desc_short) > 120:
-                            desc_short = desc_short[:117] + "..."
-                        st.caption(desc_short)
-
-                        slot_options = [3, 4, 5, 6, 7]
-                        default_slot = layout.get("n_photo_slots", 4)
-                        default_idx  = slot_options.index(default_slot) if default_slot in slot_options else 1
-                        st.selectbox(
-                            "Jumlah photo slot:",
-                            options=slot_options,
-                            index=default_idx,
-                            key=f"n_photo_slots_{layout['name']}",
+        if frames and len(frames) > 0:
+            st.caption("Click a frame to select thumbnail:")
+            COLS_PER_ROW = 4
+            secs_list = [s for s in thumb_secs if s in frames]
+            for row_start in range(0, len(secs_list), COLS_PER_ROW):
+                row_secs = secs_list[row_start:row_start + COLS_PER_ROW]
+                cols = st.columns(COLS_PER_ROW)
+                for i, sec in enumerate(row_secs):
+                    ts = format_timestamp(sec)
+                    is_selected = (ts == selected_ts)
+                    border_color = "#E03C31" if is_selected else "#cccccc"
+                    with cols[i]:
+                        st.markdown(
+                            f'<div style="text-align:center">' +
+                            f'<img src="data:image/jpeg;base64,{frames[sec]}" ' +
+                            f'style="width:100%;border-radius:4px;border:3px solid {border_color}"/>' +
+                            f'</div>',
+                            unsafe_allow_html=True
                         )
-                        st.radio(
-                            "Hero shot:",
-                            options=["No Highlight", "Full Shot", "Medium Shot"],
-                            index=1,
-                            key=f"highlight_{layout['name']}",
-                            horizontal=True,
-                        )
-
-                        if st.button(
-                            "✅ Dipilih" if is_selected else "Pilih Layout",
-                            key=f"layout_btn_{layout['name']}",
-                            type="primary" if is_selected else "secondary",
-                            use_container_width=True,
-                        ):
-                            st.session_state["selected_layout_name"] = layout["name"]
+                        if st.button(ts, key=f"ig_tb_{sec}", use_container_width=True):
+                            cur["thumbnail"] = ts
                             st.rerun()
-
-    selected_layout = next(
-        (l for l in LAYOUT_OPTIONS if l["name"] == st.session_state["selected_layout_name"]),
-        LAYOUT_OPTIONS[0],
-    )
-    n_photo_slots  = st.session_state.get(f"n_photo_slots_{selected_layout['name']}", 4)
-    highlight_mode = st.session_state.get(f"highlight_{selected_layout['name']}", "Full Shot")
-
-    st.info(
-        f"Layout aktif: **{selected_layout['name']}**  ·  "
-        f"Canvas: **{CANVAS_OPTIONS[selected_canvas_key]['label']}**  ·  "
-        f"Photo slots: **{n_photo_slots}**  ·  "
-        f"Hero shot: **{highlight_mode}**"
-    )
-
-st.divider()
-
-# ============================================================
-# STEP 6 — GENERATE PROMPT
-# ============================================================
-
-st.header("Step 6 — Generate Prompt")
-
-n_ref_images = len(st.session_state.get("image_urls", []))
-can_generate  = n_ref_images >= 1 and bool(LAYOUT_OPTIONS)
-
-if not can_generate:
-    st.warning("⚠️ Masukkan minimal 1 URL gambar di Step 1 untuk bisa generate prompt.")
-
-if st.button("✨ Generate Prompt", type="primary", disabled=not can_generate, key="gen_btn_main"):
-    with st.spinner("Generating prompt..."):
-        prompt_dict = build_prompt_json(
-            outfit_type=st.session_state.get("_product_type_val", "dress"),
-            subject_description=subject_desc,
-            layout_name=selected_layout["name"],
-            layout_description=selected_layout["description"],
-            n_product_images=n_ref_images,
-            n_photo_slots=n_photo_slots,
-            swipe_cta=selected_layout.get("raw", {}).get("swipe_cta"),
-            canvas_size=selected_canvas_key,
-            highlight=highlight_mode,
-            model_name=(selected_model_name if st.session_state.get("use_model_ref") else None),
-        )
-        st.session_state["last_prompt_json"] = prompt_dict
-
-# ============================================================
-# STEP 7 — HASIL PROMPT
-# ============================================================
-
-if st.session_state.get("last_prompt_json"):
-    prompt_dict = st.session_state["last_prompt_json"]
-
-    st.success("✅ Prompt siap!")
-    st.divider()
-    st.subheader("📋 Hasil Prompt")
-
-    has_title = (
-        st.session_state.get("title_desc_done")
-        and st.session_state.get("title_edit", "").strip()
-    )
-    if has_title:
-        st.markdown("**📌 Judul Pinterest:**")
-        st.code(st.session_state.get("title_edit", ""), language=None)
-        st.markdown("**📝 Deskripsi Pinterest:**")
-        st.code(st.session_state.get("desc_edit", ""), language=None)
-        st.markdown("---")
-
-    st.markdown("**🎨 Prompt Collage** (paste ke Midjourney / Gemini / ChatGPT):")
-    with st.expander("📄 Lihat & Copy Prompt", expanded=False):
-        st.code(prompt_dict["prompt"], language=None, wrap_lines=True)
-
-    image_urls     = st.session_state.get("image_urls", [])
-    layout_preview = selected_layout.get("preview_path", "")
-
-    sum_cols = st.columns(len(image_urls) + 1) if image_urls else st.columns(1)
-    for i, url in enumerate(image_urls):
-        with sum_cols[i]:
-            st.image(url, use_container_width=True)
-            st.caption(f"Ref {i + 1}")
-    with sum_cols[-1]:
-        if layout_preview and os.path.isfile(layout_preview):
-            st.image(layout_preview, use_container_width=True)
-        st.caption(f"Layout: {selected_layout['name']}")
-
-    st.markdown("**📂 Urutan upload gambar ke platform:**")
-    for key, val in prompt_dict["placeholders"].items():
-        st.caption(f"• {val}")
-    st.caption(f"💡 {prompt_dict['settings']['platform_notes']}")
-
-    st.markdown("**⚙️ Detail settings prompt:**")
-    s = prompt_dict["settings"]
-    col_s1, col_s2 = st.columns(2)
-    with col_s1:
-        st.caption(f"Outfit: `{s['outfit_type']}`")
-        st.caption(f"Layout: `{s['layout_selected']}`")
-        st.caption(f"Photo slots: `{s['n_photo_slots']}`")
-    with col_s2:
-        st.caption(f"Referensi gambar: `{s['n_product_images']}`")
-        st.caption(f"Total upload: `{s['total_images_to_upload']}`")
-        st.caption(f"Canvas: `{s['aspect_ratio_recommended']}`")
-
-    st.markdown("---")
-
-    # ============================================================
-    # STEP 7 — UPLOAD BAHAN PROMPT KE DROPBOX
-    # ============================================================
-
-    st.header("Step 7 — Upload Bahan Prompt ke Dropbox")
-    st.caption(
-        "Fetch gambar outfit dari Shopee, build folder `bahan_prompt/`, "
-        "lalu upload ke Dropbox. Setelah ini buka Dropbox → upload ke GPT → dapat hasil gambar."
-    )
-
-    if st.button("☁️ Upload Bahan Prompt ke Dropbox", key="btn_upload_bahan", type="primary", use_container_width=True):
-        import requests as _requests
-        import os as _os
-        from dropbox_client import upload_bytes as _dbx_upload_bytes, _get_access_token as _dbx_token
-
-        try:
-            from _credentials import (
-                DROPBOX_APP_KEY, DROPBOX_APP_SECRET,
-                DROPBOX_REFRESH_TOKEN, DROPBOX_FOLDER,
-            )
-        except ImportError as e:
-            st.error(f"❌ Config Dropbox tidak ditemukan: {e}")
-            st.stop()
-
-        image_urls   = st.session_state.get("image_urls", [])
-        layout_prev  = selected_layout.get("preview_path", "")
-
-        _canvas_ratio = CANVAS_OPTIONS.get(selected_canvas_key, {}).get("ratio", "")
-        _ratio_prefix = f"[{_canvas_ratio.replace(':', 'x')}]" if _canvas_ratio else ""
-        judul_asli    = st.session_state.get("judul_input_field", "").strip()
-        _safe         = re.sub(r'[\\/*?:"<>|]', "", judul_asli).strip().replace(" ", "_")[:20] if judul_asli else "hasflo_pin"
-        _datestamp    = datetime.now().strftime("%Y%m%d")
-        folder_name   = f"{_safe}_{_ratio_prefix}_{_datestamp}"
-
-        _use_model    = st.session_state.get("use_model_ref", False)
-        _model_name   = st.session_state.get("selected_model_name") if _use_model else None
-        _outfit_start = 2 if (_use_model and _model_name) else 1
-
-        dbx_bp = f"{DROPBOX_FOLDER.rstrip('/')}/{folder_name}/bahan_prompt"
-        errors, uploads = [], []
-
-        _prog = st.progress(0, text="Menghubungkan ke Dropbox...")
-
-        try:
-            _token = _dbx_token(DROPBOX_APP_KEY, DROPBOX_APP_SECRET, DROPBOX_REFRESH_TOKEN)
-        except Exception as e:
-            st.error(f"❌ Token Dropbox gagal: {e}")
-            st.stop()
-
-        outfit_files = {}
-        total_steps  = len(image_urls) + 3
-        step         = 0
-
-        for idx, url in enumerate(image_urls, start=1):
-            step += 1
-            _prog.progress(int(step / total_steps * 100), text=f"Fetch outfit ref {idx}...")
-            try:
-                resp = _requests.get(url, timeout=15)
-                resp.raise_for_status()
-                ct  = resp.headers.get("Content-Type", "image/jpeg")
-                ext = ct.split("/")[-1].split(";")[0].strip()
-                if ext not in ("jpg", "jpeg", "png", "webp"):
-                    ext = "jpg"
-                outfit_files[idx] = (ext, resp.content)
-                gpt_idx = idx + (_outfit_start - 1)
-                _dbx_upload_bytes(resp.content, f"{dbx_bp}/image{gpt_idx}.{ext}", _token)
-                uploads.append(f"image{gpt_idx}.{ext}")
-            except Exception as e:
-                errors.append(f"image{idx}: {e}")
-
-        step += 1
-        if _use_model and _model_name:
-            _prog.progress(int(step / total_steps * 100), text="Upload model reference...")
-            _model_exts = [".png", ".PNG", ".jpg", ".JPG", ".jpeg", ".JPEG", ".webp", ".WEBP"]
-            _model_path = None
-            _models_dir = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "assets", "models")
-            for _ext in _model_exts:
-                _c = _os.path.join(_models_dir, _model_name + _ext)
-                if _os.path.isfile(_c):
-                    _model_path = _c
-                    break
-            if _model_path:
-                _mext = _os.path.splitext(_model_path)[-1].lstrip(".") or "jpg"
-                with open(_model_path, "rb") as _mf:
-                    _dbx_upload_bytes(_mf.read(), f"{dbx_bp}/_model_ref.{_mext}", _token)
-                uploads.append(f"_model_ref.{_mext}")
-            else:
-                _all_files = _os.listdir(_models_dir) if _os.path.isdir(_models_dir) else []
-                errors.append(
-                    f"File model '{_model_name}' tidak ditemukan. "
-                    f"Path: {_models_dir} | "
-                    f"Files: {_all_files}"
-                )
-
-        step += 1
-        _prog.progress(int(step / total_steps * 100), text="Upload layout...")
-        if layout_prev and _os.path.isfile(layout_prev):
-            _lext = _os.path.splitext(layout_prev)[-1].lstrip(".") or "jpg"
-            with open(layout_prev, "rb") as lf:
-                _dbx_upload_bytes(lf.read(), f"{dbx_bp}/layout.{_lext}", _token)
-            uploads.append(f"layout.{_lext}")
+            st.caption(f"✅ Selected: **{selected_ts}**")
         else:
-            errors.append(f"Layout preview tidak ditemukan: {layout_prev}")
+            opts = [format_timestamp(s) for s in range(1, min(cur.get("duration", 15) + 1, 31))] or ["0:01","0:02","0:03","0:04"]
+            prev = cur.get("thumbnail", opts[0])
+            thumbnail = st.radio("Select second", opts, index=opts.index(prev) if prev in opts else 0, horizontal=True, key="ig_thumb_radio")
+            cur["thumbnail"] = thumbnail
 
-        step += 1
-        _prog.progress(int(step / total_steps * 100), text="Upload prompt.txt...")
-        try:
-            _dbx_upload_bytes(prompt_dict["prompt"].encode("utf-8"), f"{dbx_bp}/prompt.txt", _token)
-            uploads.append("prompt.txt")
-        except Exception as e:
-            errors.append(f"prompt.txt: {e}")
+        st.divider()
+        st.subheader("③ Raw Caption")
+        st.text_area("Caption from Instagram", value=cur["caption"], height=100, disabled=True)
 
-        _prog.empty()
-
-        st.session_state["_folder_name"]    = folder_name
-        st.session_state["_outfit_files"]   = outfit_files
-        st.session_state["_bahan_uploaded"] = True
-
-        for err in errors:
-            st.warning(f"⚠️ {err}")
-
-        if uploads:
-            st.success(
-                f"✅ `bahan_prompt/` terupload ke Dropbox! ({len(uploads)} file) → "
-                f"`{DROPBOX_FOLDER.rstrip('/')}/{folder_name}/bahan_prompt/`"
+        st.divider()
+        st.subheader("④ Credits (auto-detected, editable)")
+        col1, col2 = st.columns(2)
+        with col1:
+            cur["brand_name"] = st.text_input("Brand Name", value=cur.get("brand_name", ""), key="ig_brand")
+        with col2:
+            cur["poster"] = st.text_input(
+                "Poster @",
+                value=cur.get("poster", ""),
+                help="Akun Instagram yang posting konten ini",
+                key="ig_poster",
             )
-            st.link_button(
-                "🤖 Buka ChatGPT — siap upload file",
-                "https://chatgpt.com/",
-                use_container_width=True,
-                type="primary",
-            )
-            st.caption("Buka Dropbox → ambil file dari `bahan_prompt/` → upload ke ChatGPT → paste prompt.txt → balik ke sini untuk Step 8.")
+        # Mentions dari caption — auto-detect, editable sebagai teks
+        mentions_raw = st.text_input(
+            "@Mentions dari caption",
+            value=" ".join(cur.get("mentions", [])),
+            help="Semua @mention yang ada di caption (selain poster). Pisah dengan spasi.",
+            key="ig_mentions",
+        )
+        cur["mentions"] = [m.strip() for m in mentions_raw.split() if m.strip().startswith("@")]
 
-# ============================================================
-# STEP 8 — UPLOAD HASIL GPT → READY PIN
-# ============================================================
+        # Preview credit line realtime
+        preview_credit = _build_credit_line(cur.get("poster", ""), cur.get("mentions", []))
+        st.caption(f"Preview credit: `{preview_credit}`")
 
-st.divider()
-st.header("Step 8 — Upload Hasil GPT & Kirim Ready Pin")
+        st.divider()
+        st.subheader("⑤ Pin Details")
+        col_a, col_b, col_c = st.columns([2, 2, 2])
+        with col_a:
+            custom_name = st.text_input("Pin name (optional)", value=cur.get("custom_name", cur.get("brand_name", "")), key="ig_pin_name")
+            board_preview = cur.get("board", BOARDS[0])
+            suffix = BOARD_TITLE_SUFFIX.get(board_preview, "Logo Animation")
+            pin_title = f"{custom_name or cur.get('brand_name', 'Logo')} {suffix}"
+            st.caption(f"→ **{pin_title}**")
+            cur["custom_name"] = custom_name
+        with col_b:
+            board = st.selectbox("Pinterest Board", BOARDS,
+                                  index=BOARDS.index(cur.get("board", BOARDS[0])) if cur.get("board") in BOARDS else 0,
+                                  key="ig_board")
+            cur["board"] = board
+            # Update suffix setelah board dipilih
+            suffix = BOARD_TITLE_SUFFIX.get(board, "Logo Animation")
+            pin_title = f"{custom_name or cur.get('brand_name', 'Logo')} {suffix}"
+        with col_c:
+            sector = st.selectbox("Sector (optional)", SECTORS,
+                                   index=SECTORS.index(cur.get("sector", "")) if cur.get("sector", "") in SECTORS else 0,
+                                   key="ig_sector")
+            cur["sector"] = sector
 
-_bahan_done = st.session_state.get("_bahan_uploaded", False)
-
-if not _bahan_done:
-    st.info("⬆️ Selesaikan Step 7 dulu (upload bahan prompt ke Dropbox).")
-else:
-    _folder_name  = st.session_state.get("_folder_name", "")
-    _outfit_files = st.session_state.get("_outfit_files", {})
-
-    st.caption(
-        f"Folder aktif: `{_folder_name}` — "
-        "drag & drop hasil GPT di bawah, lalu upload `ready_pin/` ke Dropbox."
-    )
-
-    st.markdown("**🖼️ Hasil GPT (Slide 1)**")
-    gpt_file = st.file_uploader(
-        "Drag & drop gambar hasil GPT:",
-        type=["png", "jpg", "jpeg", "webp"],
-        key="gpt_result_file",
-        label_visibility="collapsed",
-    )
-
-    if gpt_file:
-        gpt_bytes = gpt_file.read()
-        gpt_ext   = gpt_file.name.rsplit(".", 1)[-1].lower() if "." in gpt_file.name else "png"
-
-        st.markdown("**📋 Preview urutan slide carousel:**")
-        all_slides = [("Slide 1 — Hasil GPT", gpt_bytes, gpt_ext)]
-        for idx, (ext, data) in sorted(_outfit_files.items()):
-            all_slides.append((f"Slide {idx + 1} — Outfit Ref {idx}", data, ext))
-
-        preview_cols = st.columns(min(len(all_slides), 5))
-        for i, (label, data, ext) in enumerate(all_slides):
-            with preview_cols[i % 5]:
-                st.image(data, use_container_width=True)
-                st.caption(label)
-
-        st.markdown("---")
-
-        # ── Toggle crop/expand per outfit ref ──────────────────
-        if _outfit_files:
-            _canvas = CANVAS_OPTIONS.get(selected_canvas_key, CANVAS_OPTIONS["1000x1500"])
-            st.markdown("**🖼️ Pilih mode pemrosesan slide 2 dst:**")
-            st.caption(f"Canvas target: `{_canvas['w']} × {_canvas['h']} px` ({_canvas['ratio']})")
-
-            for idx, (ext, data) in sorted(_outfit_files.items()):
-                with st.container(border=True):
-                    st.markdown(f"**Slide {idx + 1} — Outfit Ref {idx}**")
-
-                    # Toggle per slide
-                    mode = st.radio(
-                        "Mode:",
-                        options=["expand", "crop"],
-                        index=0,
-                        key=f"slide_mode_{idx}",
-                        horizontal=True,
-                        format_func=lambda x: "📐 Expand (fit + dominant fill)" if x == "expand" else "✂️ Crop (center crop ke ratio)",
-                    )
-
-                    # Preview kedua mode side-by-side
-                    col_orig, col_result = st.columns(2)
-
-                    with col_orig:
-                        st.caption("Original")
-                        st.image(data, use_container_width=True)
-
-                    with col_result:
-                        st.caption(f"Preview {'Expand' if mode == 'expand' else 'Crop'}")
-                        try:
-                            if mode == "expand":
-                                preview = fit_to_canvas_dominant(data, _canvas["w"], _canvas["h"])
-                            else:
-                                # Center crop ke ratio target
-                                _img = Image.open(io.BytesIO(data)).convert("RGB")
-                                src_w, src_h = _img.size
-                                tgt_ratio = _canvas["w"] / _canvas["h"]
-                                src_ratio = src_w / src_h
-                                if src_ratio > tgt_ratio:
-                                    # Terlalu lebar — crop kiri kanan
-                                    new_w = int(src_h * tgt_ratio)
-                                    left = (src_w - new_w) // 2
-                                    _img = _img.crop((left, 0, left + new_w, src_h))
-                                else:
-                                    # Terlalu tinggi — crop atas bawah
-                                    new_h = int(src_w / tgt_ratio)
-                                    top = (src_h - new_h) // 2
-                                    _img = _img.crop((0, top, src_w, top + new_h))
-                                _img = _img.resize((_canvas["w"], _canvas["h"]), Image.LANCZOS)
-                                buf = io.BytesIO()
-                                _img.save(buf, format="JPEG", quality=95)
-                                preview = buf.getvalue()
-                            st.image(preview, use_container_width=True)
-                        except Exception as _e:
-                            st.caption(f"Preview error: {_e}")
-
-            st.markdown("---")
-
-        if st.button("☁️ Upload Ready Pin ke Dropbox", key="btn_upload_ready", type="primary", use_container_width=True):
-            from dropbox_client import upload_bytes as _dbx_upload_bytes, _get_access_token as _dbx_token
-
-            try:
-                from _credentials import (
-                    DROPBOX_APP_KEY, DROPBOX_APP_SECRET,
-                    DROPBOX_REFRESH_TOKEN, DROPBOX_FOLDER,
-                )
-            except ImportError as e:
-                st.error(f"❌ Config Dropbox tidak ditemukan: {e}")
-                st.stop()
-
-            title_pin      = st.session_state.get("title_edit", "").strip()
-            desc_pin       = st.session_state.get("desc_edit", "").strip()
-            link_affiliate = st.session_state.get("shopee_affiliate_link", "").strip().rstrip(".")
-            _board         = st.session_state.get("selected_board", BOARD_HIJAB)
-            _section       = st.session_state.get("selected_section", "Dress")
-            judul_asli     = st.session_state.get("judul_input_field", "").strip()
-
-            dbx_rp     = f"{DROPBOX_FOLDER.rstrip('/')}/{_folder_name}/ready_pin"
-            errors_rp  = []
-            uploads_rp = []
-
-            _prog2 = st.progress(0, text="Menghubungkan ke Dropbox...")
-
-            try:
-                _token = _dbx_token(DROPBOX_APP_KEY, DROPBOX_APP_SECRET, DROPBOX_REFRESH_TOKEN)
-            except Exception as e:
-                st.error(f"❌ Token Dropbox gagal: {e}")
-                st.stop()
-
-            total_rp = len(_outfit_files) + 2
-            step_rp  = 0
-
-            step_rp += 1
-            _prog2.progress(int(step_rp / total_rp * 100), text="Upload Slide 1 (hasil GPT)...")
-            try:
-                _dbx_upload_bytes(gpt_bytes, f"{dbx_rp}/slides/slide1.{gpt_ext}", _token)
-                uploads_rp.append(f"slides/slide1.{gpt_ext}")
-            except Exception as e:
-                errors_rp.append(f"slide1: {e}")
-
-            for idx, (ext, data) in sorted(_outfit_files.items()):
-                step_rp += 1
-                _prog2.progress(int(step_rp / total_rp * 100), text=f"Processing image{idx}...")
+        gen_label = "🔄 Regenerate" if st.session_state.stage == "generated" else "✨ Generate Description & Keywords"
+        if st.button(gen_label, type="primary", key="ig_gen_btn"):
+            with st.spinner("Generating SEO content..."):
                 try:
-                    # Fit ke canvas ratio pilihan user dengan dominant color fill
-                    _canvas = CANVAS_OPTIONS.get(selected_canvas_key, CANVAS_OPTIONS["1000x1500"])
-                    _fitted = fit_to_canvas_dominant(data, _canvas["w"], _canvas["h"])
-                    _dbx_upload_bytes(_fitted, f"{dbx_rp}/image{idx}.jpg", _token)
-                    uploads_rp.append(f"image{idx}.jpg")
+                    result = generate_content(
+                        pin_title=pin_title,
+                        brand_name=cur.get("brand_name", ""),
+                        poster=cur.get("poster", ""),
+                        mentions=cur.get("mentions", []),
+                        board=board,
+                        caption=cur["caption"],
+                        api_key=GROQ_KEY,
+                        cta_index=st.session_state.cta_counter,
+                        sector=cur.get("sector", ""),
+                    )
+                    cur.update(result)
+                    st.session_state.stage = "generated"
+                    st.rerun()
                 except Exception as e:
-                    errors_rp.append(f"image{idx}: {e}")
+                    st.error(f"❌ {e}")
 
-            step_rp += 1
-            _prog2.progress(int(step_rp / total_rp * 100), text="Upload deskripsi.txt...")
-            desc_lines = [
-                f"{_board}/{_section}",
-                title_pin or judul_asli,
-                desc_pin,
-                link_affiliate,
-            ]
-            try:
-                _dbx_upload_bytes(
-                    "\n".join(desc_lines).encode("utf-8"),
-                    f"{dbx_rp}/deskripsi.txt",
-                    _token,
-                )
-                uploads_rp.append("deskripsi.txt")
-            except Exception as e:
-                errors_rp.append(f"deskripsi.txt: {e}")
+        if st.session_state.stage == "generated" and cur.get("description"):
+            st.divider()
+            st.subheader("⑥ Generated Content (editable)")
+            cur["title"] = st.text_input("Title", value=cur.get("title", ""), max_chars=100, key="ig_title")
+            cur["description"] = st.text_area("Description", value=cur.get("description", ""), height=160, key="ig_desc")
+            cur["keywords"] = st.text_input("Keywords", value=cur.get("keywords", ""), key="ig_kw")
 
-            _prog2.empty()
+            st.divider()
+            if st.button("➕ Add to Queue", type="primary", key="ig_add_btn"):
+                st.session_state.pins.append({
+                    "Title": cur["title"],
+                    "Video URL": cur["video_url"],
+                    "Pinterest board": cur["board"],
+                    "Thumbnail": cur.get("thumbnail", "0:04"),
+                    "Description": cur["description"],
+                    "Link": cur["ig_url"],
+                    "Publish date": "",
+                    "Keywords": cur["keywords"],
+                })
+                st.session_state.cta_counter += 1
+                st.session_state.stage = "input"
+                st.session_state.current = {"frames": {}, "thumb_secs": []}
+                _clear_ig_fields()
+                st.success(f"✅ Pin added! Total: {len(st.session_state.pins)}")
+                st.rerun()
 
-            for err in errors_rp:
-                st.warning(f"⚠️ {err}")
 
-            if uploads_rp:
-                # ── Rename folder parent: tambah prefix READY_ ──
-                _old_parent = f"{DROPBOX_FOLDER.rstrip('/')}/{_folder_name}"
-                _new_folder_name = f"READY_{_folder_name}"
-                _new_parent = f"{DROPBOX_FOLDER.rstrip('/')}/{_new_folder_name}"
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 2 — DIRECT URL PIPELINE
+# ═══════════════════════════════════════════════════════════════════════════════
+with tab_direct:
+    st.subheader("① Media URL")
+    direct_url = st.text_input(
+        "Paste direct media URL",
+        placeholder="https://example.com/video.mp4",
+        key="direct_url_input"
+    )
+
+    if direct_url and st.button("🔽 Fetch Preview", type="primary", key="direct_fetch_btn"):
+        st.session_state.current_direct = {}
+        st.session_state.stage_direct = "input"
+
+        tmpdir = tempfile.mkdtemp()
+        is_gif = direct_url.split("?")[0].lower().endswith(".gif")
+
+        if is_gif:
+            with st.spinner("Downloading GIF..."):
                 try:
-                    from dropbox_client import rename_folder as _dbx_rename
-                    _dbx_rename(_old_parent, _new_parent, _token)
-                    st.session_state["_folder_name"] = _new_folder_name
-                    st.success(
-                        f"✅ `ready_pin/` terupload! ({len(uploads_rp)} file) → "
-                        f"`{_new_parent}/ready_pin`"
-                    )
-                    st.info(f"📁 Folder direname → `{_new_folder_name}`")
-                except Exception as _e:
-                    st.success(
-                        f"✅ `ready_pin/` terupload! ({len(uploads_rp)} file) → "
-                        f"`{dbx_rp}`"
-                    )
-                    st.warning(f"⚠️ Rename folder gagal: {_e}")
-                st.caption("Agent Pinterest siap memproses folder ini.")
+                    raw_path = download_direct(direct_url, tmpdir)
+                except Exception as e:
+                    st.error(f"❌ Download failed: {e}")
+                    st.stop()
 
-st.divider()
-if st.button("🌸 Input Baru — Produk Berikutnya", type="primary", use_container_width=True, key="btn_input_baru"):
-    _n_slots = len(st.session_state.get("url_slots", [""]))
-    for _i in range(_n_slots):
-        if f"url_slot_{_i}" in st.session_state:
-            del st.session_state[f"url_slot_{_i}"]
-    for k in CLEAR_KEYS:
-        if k in st.session_state:
-            del st.session_state[k]
-    for layout in LAYOUT_OPTIONS:
-        for suffix in ["n_photo_slots_", "highlight_"]:
-            key = f"{suffix}{layout['name']}"
-            if key in st.session_state:
-                del st.session_state[key]
-    st.session_state["url_slots"] = [""]
-    st.rerun()
+            with st.spinner("Converting GIF → MP4..."):
+                try:
+                    # Unique filename per URL to prevent stacking
+                    url_hash = hashlib.md5(direct_url.encode()).hexdigest()[:8]
+                    gif_mp4_name = f"gif_{url_hash}.mp4"
+                    video_path = convert_to_mp4(raw_path, tmpdir, output_name=gif_mp4_name)
+                    st.info("✅ GIF converted to MP4")
+                except Exception as e:
+                    st.error(f"❌ GIF conversion failed: {e}")
+                    st.stop()
+
+            with st.spinner("Uploading to Dropbox..."):
+                try:
+                    video_url = upload_and_get_link(
+                        video_path, st.session_state.session_folder,
+                        token=DROPBOX_TOKEN,
+                        app_key=DROPBOX_APP_KEY,
+                        app_secret=DROPBOX_APP_SECRET,
+                        refresh_token=DROPBOX_REFRESH_TOKEN,
+                    )
+                except Exception as e:
+                    st.error(f"❌ Dropbox upload failed: {e}")
+                    st.stop()
+        else:
+            # MP4 — use direct URL, no Dropbox upload needed
+            with st.spinner("Downloading MP4 for preview..."):
+                try:
+                    video_path = download_direct(direct_url, tmpdir)
+                except Exception as e:
+                    st.error(f"❌ Download failed: {e}")
+                    st.stop()
+            video_url = direct_url  # Pinterest fetches directly from source URL
+
+        with st.spinner("Extracting thumbnail previews..."):
+            duration = get_duration(video_path)
+            max_sec = min(duration, 30)
+            thumb_secs = list(range(1, max_sec + 1))
+            frames = extract_frames(video_path, thumb_secs)
+
+        st.session_state.current_direct = {
+            "media_url": direct_url,
+            "video_url": video_url,
+            "duration": duration,
+            "frames": frames,
+            "thumb_secs": thumb_secs,
+            "is_gif": is_gif,
+        }
+        st.session_state.stage_direct = "fetched"
+        st.rerun()
+
+    if st.session_state.stage_direct in ("fetched", "generated"):
+        cur = st.session_state.current_direct
+
+        st.divider()
+        st.subheader("② Preview")
+        st.markdown("<style>video { max-height: 280px; }</style>", unsafe_allow_html=True)
+        col_v, _ = st.columns([1, 2])
+        with col_v:
+            st.video(cur.get("video_url", cur.get("media_url", "")))
+            st.link_button("🎬 Open in browser (Safari)", url=cur.get("video_url", cur.get("media_url", "")))
+
+        st.divider()
+        st.subheader("Thumbnail timestamp")
+        frames = cur.get("frames", {})
+        thumb_secs = cur.get("thumb_secs", [])
+        selected_ts = cur.get("thumbnail", format_timestamp(thumb_secs[0]) if len(thumb_secs) > 0 else "0:01")
+
+        if frames and len(frames) > 0:
+            st.caption("Click a frame to select thumbnail:")
+            COLS_PER_ROW = 4
+            secs_list = [s for s in thumb_secs if s in frames]
+            for row_start in range(0, len(secs_list), COLS_PER_ROW):
+                row_secs = secs_list[row_start:row_start + COLS_PER_ROW]
+                cols = st.columns(COLS_PER_ROW)
+                for i, sec in enumerate(row_secs):
+                    ts = format_timestamp(sec)
+                    is_selected = (ts == selected_ts)
+                    border_color = "#E03C31" if is_selected else "#cccccc"
+                    with cols[i]:
+                        st.markdown(
+                            f'<div style="text-align:center">' +
+                            f'<img src="data:image/jpeg;base64,{frames[sec]}" ' +
+                            f'style="width:100%;border-radius:4px;border:3px solid {border_color}"/>' +
+                            f'</div>',
+                            unsafe_allow_html=True
+                        )
+                        if st.button(ts, key=f"dt_tb_{sec}", use_container_width=True):
+                            cur["thumbnail"] = ts
+                            st.rerun()
+            st.caption(f"✅ Selected: **{selected_ts}**")
+        else:
+            opts = [format_timestamp(s) for s in range(1, min(cur.get("duration", 15) + 1, 31))] or ["0:01","0:02","0:03","0:04"]
+            prev = cur.get("thumbnail", opts[0])
+            thumbnail = st.radio("Select second", opts, index=opts.index(prev) if prev in opts else 0, horizontal=True, key="dt_thumb_radio")
+            cur["thumbnail"] = thumbnail
+
+        st.divider()
+        st.subheader("③ Pin Details")
+        col_a, col_b, col_c = st.columns([2, 2, 2])
+        with col_a:
+            pin_name = st.text_input("Pin name", placeholder="e.g. Nike", key="dt_pin_name",
+                                      value=cur.get("pin_name", ""))
+            suffix = BOARD_TITLE_SUFFIX.get(cur.get("board", BOARDS[0]), "Logo Animation")
+            pin_title = f"{pin_name} {suffix}" if pin_name else suffix
+            st.caption(f"→ **{pin_title}**")
+            cur["pin_name"] = pin_name
+        with col_b:
+            board = st.selectbox("Pinterest Board", BOARDS,
+                                  index=BOARDS.index(cur.get("board", BOARDS[0])) if cur.get("board") in BOARDS else 0,
+                                  key="dt_board")
+            cur["board"] = board
+        with col_c:
+            sector = st.selectbox("Sector (optional)", SECTORS,
+                                   index=SECTORS.index(cur.get("sector", "")) if cur.get("sector", "") in SECTORS else 0,
+                                   key="dt_sector")
+            cur["sector"] = sector
+
+        st.divider()
+        st.subheader("④ Credit & Link")
+        col_cr, col_lk = st.columns(2)
+        with col_cr:
+            credit = st.text_input("Credit", placeholder="e.g. Motion by @username | Logo by @designer",
+                                    value=cur.get("credit", ""), key="dt_credit")
+            cur["credit"] = credit
+        with col_lk:
+            source_link = st.text_input("Link to original content", placeholder="https://...",
+                                         value=cur.get("source_link", ""), key="dt_link")
+            cur["source_link"] = source_link
+
+        gen_label = "🔄 Regenerate" if st.session_state.stage_direct == "generated" else "✨ Generate Description & Keywords"
+        if st.button(gen_label, type="primary", key="dt_gen_btn"):
+            with st.spinner("Generating SEO content..."):
+                try:
+                    result = generate_content(
+                        pin_title=pin_title,
+                        brand_name=pin_name,
+                        poster=credit,
+                        mentions=[],
+                        board=board,
+                        caption=pin_name,
+                        api_key=GROQ_KEY,
+                        cta_index=st.session_state.cta_counter,
+                        sector=cur.get("sector", ""),
+                    )
+                    cur.update(result)
+                    st.session_state.stage_direct = "generated"
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ {e}")
+
+        if st.session_state.stage_direct == "generated" and cur.get("description"):
+            st.divider()
+            st.subheader("⑤ Generated Content (editable)")
+            cur["title"] = st.text_input("Title", value=cur.get("title", ""), max_chars=100, key="dt_title")
+            cur["description"] = st.text_area("Description", value=cur.get("description", ""), height=160, key="dt_desc")
+            cur["keywords"] = st.text_input("Keywords", value=cur.get("keywords", ""), key="dt_kw")
+
+            st.divider()
+            if st.button("➕ Add to Queue", type="primary", key="dt_add_btn"):
+                st.session_state.pins.append({
+                    "Title": cur["title"],
+                    "Video URL": cur.get("video_url", cur.get("media_url", "")),
+                    "Pinterest board": cur["board"],
+                    "Thumbnail": cur.get("thumbnail", "0:04"),
+                    "Description": cur["description"],
+                    "Link": cur.get("source_link", ""),
+                    "Publish date": "",
+                    "Keywords": cur["keywords"],
+                })
+                st.session_state.cta_counter += 1
+                st.session_state.stage_direct = "input"
+                st.session_state.current_direct = {"frames": {}, "thumb_secs": []}
+                _clear_direct_fields()
+                st.success(f"✅ Pin added! Total: {len(st.session_state.pins)}")
+                st.rerun()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# QUEUE & EXPORT (shared)
+# ═══════════════════════════════════════════════════════════════════════════════
+if st.session_state.pins:
+    st.divider()
+    st.subheader(f"📋 Queue — {len(st.session_state.pins)} pin(s)")
+
+    df = pd.DataFrame(st.session_state.pins, columns=CSV_COLUMNS)
+    edited_df = st.data_editor(
+        df,
+        width=1400,
+        num_rows="fixed",
+        column_config={
+            "Title": st.column_config.TextColumn(width="medium"),
+            "Video URL": st.column_config.TextColumn(width="medium"),
+            "Pinterest board": st.column_config.SelectboxColumn(
+                width="medium",
+                options=BOARDS,
+            ),
+            "Thumbnail": st.column_config.TextColumn(width="small"),
+            "Description": st.column_config.TextColumn(width="large"),
+            "Link": st.column_config.TextColumn(width="medium"),
+            "Publish date": st.column_config.TextColumn(width="medium"),
+            "Keywords": st.column_config.TextColumn(width="large"),
+        },
+        key="queue_editor",
+    )
+    # Sync edits back ke session_state
+    st.session_state.pins = edited_df.to_dict("records")
+
+    st.divider()
+    st.subheader("📅 Step 1 — Schedule & Generate CSV")
+
+    use_schedule = st.toggle("Enable scheduling", value=False,
+                              help="OFF = Publish date kosong. ON = randomize dalam rentang tanggal.")
+    if use_schedule:
+        col_sd, col_ed = st.columns(2)
+        with col_sd:
+            sched_start = st.date_input(
+                "Publish from (start date)",
+                value=date.today(),
+                key="sched_start",
+                help="Hari ini = mulai dari sekarang + 2 jam. Besok atau lebih = mulai dari 02:00 pagi hari itu.",
+            )
+        with col_ed:
+            sched_end = st.date_input(
+                "Publish until (end date)",
+                value=date.today() + timedelta(days=14),
+                key="sched_end",
+            )
+        if sched_start <= date.today():
+            st.caption("⏰ Start: sekarang + 2 jam")
+        else:
+            st.caption(f"⏰ Start: {sched_start.strftime('%d %b %Y')} pukul 02:00")
+    else:
+        sched_start = date.today()
+        sched_end = date.today() + timedelta(days=14)
+
+    # Detect prefix for CSV filename
+    has_direct = any(not p.get("Link", "").startswith("https://www.instagram.com") for p in st.session_state.pins)
+    has_ig = any(p.get("Link", "").startswith("https://www.instagram.com") for p in st.session_state.pins)
+    if has_direct and has_ig:
+        csv_prefix = "bulk_logo_mixed"
+    elif has_direct:
+        csv_prefix = "bulk_logo_NON-IG"
+    else:
+        csv_prefix = "bulk_logo"
+
+    col_exp, col_clr = st.columns([3, 1])
+    with col_exp:
+        if st.button("📋 Generate CSV Preview", type="primary", key="export_btn"):
+            try:
+                pins_now = st.session_state.pins
+                if not pins_now:
+                    st.warning("Queue is empty.")
+                else:
+                    export = []
+                    if use_schedule:
+                        end_dt = datetime.combine(sched_end, datetime.min.time())
+                        schedules = generate_schedule(
+                            end_dt,
+                            len(pins_now),
+                            start_date=sched_start,
+                        )
+                        for i, pin in enumerate(pins_now):
+                            p = {c: pin.get(c, "") for c in CSV_COLUMNS}
+                            p["Publish date"] = schedules[i]
+                            export.append(p)
+                    else:
+                        for pin in pins_now:
+                            p = {c: pin.get(c, "") for c in CSV_COLUMNS}
+                            p["Publish date"] = ""
+                            export.append(p)
+
+                    folder_name = st.session_state.session_folder.strip("/")
+                    st.session_state["csv_preview"] = export
+                    st.session_state["csv_fname"] = f"{csv_prefix}_{folder_name}.csv"
+                    # Reset upload state supaya tombol Upload muncul fresh
+                    if "csv_uploaded_path" in st.session_state:
+                        del st.session_state["csv_uploaded_path"]
+                    st.rerun()
+            except Exception as e:
+                st.error(f"❌ Export error: {e}")
+
+    with col_clr:
+        if st.button("🗑️ Clear Queue", key="clr_btn"):
+            st.session_state.pins = []
+            for k in ["csv_preview", "csv_uploaded_path", "csv_fname"]:
+                if k in st.session_state:
+                    del st.session_state[k]
+            st.rerun()
+
+    # ── Step 2: Edit CSV preview ──────────────────────────────────────────────
+    if "csv_preview" in st.session_state and st.session_state["csv_preview"]:
+        st.divider()
+        st.subheader("✏️ Step 2 — Edit CSV")
+        st.caption("Edit langsung di tabel sebelum upload ke Dropbox.")
+
+        df_preview = pd.DataFrame(st.session_state["csv_preview"], columns=CSV_COLUMNS)
+        edited_csv_df = st.data_editor(
+            df_preview,
+            width=1400,
+            num_rows="fixed",
+            column_config={
+                "Title": st.column_config.TextColumn(width="medium"),
+                "Video URL": st.column_config.TextColumn(width="medium"),
+                "Pinterest board": st.column_config.SelectboxColumn(
+                    width="medium", options=BOARDS,
+                ),
+                "Thumbnail": st.column_config.TextColumn(width="small"),
+                "Description": st.column_config.TextColumn(width="large"),
+                "Link": st.column_config.TextColumn(width="medium"),
+                "Publish date": st.column_config.TextColumn(width="medium"),
+                "Keywords": st.column_config.TextColumn(width="large"),
+            },
+            key="csv_editor",
+        )
+        # Sync edits ke session_state csv_preview
+        st.session_state["csv_preview"] = edited_csv_df.to_dict("records")
+
+        st.divider()
+        st.subheader("☁️ Step 3 — Upload ke Dropbox")
+
+        col_up, col_fname = st.columns([1, 2])
+        with col_fname:
+            st.caption(f"📁 Filename: **{st.session_state['csv_fname']}**")
+        with col_up:
+            if st.button("⬆️ Upload CSV ke Dropbox", type="primary", key="upload_btn"):
+                try:
+                    final_data = st.session_state["csv_preview"]
+                    df_final = pd.DataFrame(final_data, columns=CSV_COLUMNS)
+                    buf = io.StringIO()
+                    df_final.to_csv(buf, index=False)
+                    csv_bytes = buf.getvalue().encode("utf-8")
+
+                    dropbox_path = upload_csv(
+                        csv_bytes,
+                        st.session_state["csv_fname"],
+                        st.session_state.session_folder,
+                        token=DROPBOX_TOKEN,
+                        app_key=DROPBOX_APP_KEY,
+                        app_secret=DROPBOX_APP_SECRET,
+                        refresh_token=DROPBOX_REFRESH_TOKEN,
+                    )
+                    st.session_state["csv_uploaded_path"] = dropbox_path
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Upload error: {e}")
+
+        if "csv_uploaded_path" in st.session_state:
+            st.success(f"✅ CSV saved to Dropbox: `{st.session_state['csv_uploaded_path']}`")
+            st.link_button("📌 Upload to Pinterest",
+                            url="https://www.pinterest.com/settings/bulk-create-pins/")
