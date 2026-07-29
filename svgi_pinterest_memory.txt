@@ -1,5 +1,5 @@
 SVGI PINTEREST PIPELINE — MEMORY FILE
-Generated: 2026-07-25 (updated v7)
+Generated: 2026-07-29 (updated v7.1)
 ======================================
 
 ## AKUN
@@ -20,7 +20,7 @@ Automate pipeline dari Instagram / Direct URL → Dropbox → Pinterest CSV bulk
 
 ## STRUKTUR FILE
 svgi-pinterest/
-├── app.py                        ← main Streamlit app (2 tab)
+├── app.py                        ← main Streamlit app (2 tab, 706 baris)
 ├── requirements.txt
 ├── .gitignore
 ├── svgi_pinterest_memory.txt
@@ -36,8 +36,26 @@ svgi-pinterest/
     ├── thumbnail.py              ← ffmpeg extract frames → base64 jpeg
     └── media.py                  ← download direct URL, convert GIF→MP4, get duration
 
+## STREAMLIT SECRETS (template)
+GROQ_API_KEY = "..."
+DROPBOX_TOKEN = ""
+DROPBOX_APP_KEY = "l1c50p00605pykv"
+DROPBOX_APP_SECRET = "..."
+DROPBOX_REFRESH_TOKEN = "..."
+
+Catatan: AFFILIATE_LINK dan DROPBOX_FOLDER sudah dihapus — keduanya unused.
+
+## REQUIREMENTS.TXT
+streamlit>=1.35.0
+yt-dlp>=2024.1.0
+dropbox>=11.36.0
+groq>=0.9.0
+pandas>=2.0.0
+requests>=2.31.0
+imageio-ffmpeg>=0.4.9
+
 ## PIPELINE FLOW — TAB 1 (Instagram)
-1. New Session → buat folder Dropbox: /2026-07-25_1430
+1. New Session → buat folder Dropbox: /2026-07-29_1430
 2. Paste URL Instagram reel/post (support carousel dengan ?img_index=N)
 3. Fetch metadata (yt-dlp) + download video
 4. Upload video ke Dropbox
@@ -49,7 +67,7 @@ svgi-pinterest/
 9. Input pin name + pilih Board + pilih Sector
 10. Generate → review/edit Title, Description, Keywords
 11. Regenerate jika perlu
-12. Add to Queue
+12. Add to Queue → Link = cur["ig_url"] (URL post asli)
 13. Loop ke step 2 untuk URL baru
 14. Generate CSV Preview → Edit CSV → Upload ke Dropbox (3 step terpisah)
 
@@ -57,18 +75,19 @@ svgi-pinterest/
 1. Paste direct URL (.mp4 / .mov / .gif)
 2. Download file + extract frames thumbnail
 3. Preview video + thumbnail grid
-4. Input manual: Nama pin, Credit animator (plain text), Link ke konten asli (dinamis per pin)
+4. Input manual: Nama pin, Credit animator (plain text), Link ke konten asli (per pin)
 5. Pilih Board + Sector
 6. Generate → review/edit Title, Description, Keywords
-7. Add to Queue
+7. Add to Queue → Link = source_link yang diinput manual
 8. Generate CSV Preview → Edit CSV → Upload ke Dropbox (3 step terpisah)
 
 Catatan:
 - GIF: download → convert ke MP4 via ffmpeg → upload Dropbox → Video URL = Dropbox link
 - MP4/MOV: download untuk thumbnail saja → Video URL = direct URL (tidak upload Dropbox)
+- Link per pin bersifat manual dan unik, bukan global affiliate link
 
 ## CAROUSEL FIX (instagram.py)
-- _parse_img_index(url): parse ?img_index=N dari URL (1-based, sama dengan Pinterest)
+- _parse_img_index(url): parse ?img_index=N dari URL (1-based)
 - _strip_img_index(url): buang parameter sebelum kirim ke yt-dlp
 - yt-dlp fetch seluruh carousel dengan ignoreerrors=True (tidak crash kalau ada foto)
 - _pick_entry(info, img_index): filter entries yang video (cek formats, vcodec, ext),
@@ -98,24 +117,25 @@ Suffix per board (BOARD_TITLE_SUFFIX di model.py):
 - Famous Brand ...            → "Logo Animation"
 - Brand Identity in Motion    → "Animated Brand Identity"
 
-Contoh board biasa:  "Vortex Logo Animation. See bio link 🔗"
+Contoh board biasa:    "Vortex Logo Animation. See bio link 🔗"
 Contoh Brand Identity: "Nike Animated Brand Identity. Bio link 🔗"
 
 ## CTA TITLE — A/B TEST OTOMATIS (_fit_cta_for_title)
 Pinterest limit title = 100 chars. CTA title dipisah dari CTA description.
+Fungsi pure Python, tidak pakai Groq.
 
 CTA_TITLE_VARIANTS (14 varian, max ~20 chars):
-- "See our bio link 🔗", "Check our bio link ✨", "Tap the bio link 🎬",
-  "Bio link 🔗", "Visit our bio link 💡", "Link in bio 🎯", dll.
+"See our bio link 🔗", "Check our bio link ✨", "Tap the bio link 🎬",
+"Bio link 🔗", "Visit our bio link 💡", "Link in bio 🎯", dll.
 
-Logika _fit_cta_for_title() — pure Python, tanpa Groq:
+Logika _fit_cta_for_title(pin_title, preferred_cta, max_len=100):
 1. Coba preferred_cta (CTA_TITLE_VARIANTS[cta_index])
 2. Coba semua CTA_TITLE_VARIANTS secara berurutan, ambil yang pertama fit
 3. Fallback ke varian terpendek, truncate di batas kata kalau masih tidak fit
 
 ## CTA DESCRIPTION (CTA_VARIANTS)
 14 rotasi soft-sell, dipakai di baris terakhir description.
-Index description = cta_index % 14, berbeda dari index title.
+Index = cta_index % 14, berbeda dari index title.
 Contoh: "Inspired by this? Our bio link connects you with the right motion designer 🔗"
 
 ## FORMAT DESCRIPTION
@@ -138,7 +158,7 @@ Instruksi spesifik per board yang diinjeksi ke prompt Groq:
   motion branding — instruksi tambahan: do NOT focus on just the logo
 
 ## SECTOR SEO HINT (SECTOR_SEO_HINT di model.py)
-49 sektor, masing-masing punya instruksi + keyword spesifik yang diinjeksi ke prompt.
+49 sektor, masing-masing punya instruksi + keyword spesifik diinjeksi ke prompt.
 
 Kategori:
 - General (33): Automotive, Aviation, Beauty, Construction, Crypto, Education,
@@ -198,7 +218,6 @@ generate_schedule(end_date, count, start_date=None, shuffle=False, _now=None)
 ## DROPBOX CONFIG
 - Permission: Scoped App (App Folder)
 - App Folder path: /Apps/SVGI Pinterest/
-- DROPBOX_FOLDER = "/" di secrets
 - Auth: OAuth2 Refresh Token (permanent, tidak expired)
 - App key: l1c50p00605pykv
 - Shared link format: dl.dropboxusercontent.com dengan ?dl=1
@@ -206,45 +225,13 @@ generate_schedule(end_date, count, start_date=None, shuffle=False, _now=None)
   * upload_and_get_link() → video, return direct link
   * upload_csv()          → CSV bulk, return dropbox path
 
-## STREAMLIT SECRETS (template)
-GROQ_API_KEY = "..."
-DROPBOX_TOKEN = ""
-DROPBOX_APP_KEY = "l1c50p00605pykv"
-DROPBOX_APP_SECRET = "..."
-DROPBOX_REFRESH_TOKEN = "..."
-DROPBOX_FOLDER = "/"
-AFFILIATE_LINK = ""
-
-## REQUIREMENTS.TXT
-streamlit>=1.35.0
-yt-dlp>=2024.1.0
-dropbox>=11.36.0
-groq>=0.9.0
-pandas>=2.0.0
-requests>=2.31.0
-imageio-ffmpeg>=0.4.9
-
-## BEFORE vs AFTER (v6 → v7)
-| Area              | Before (v6)                        | After (v7)                              |
-|-------------------|------------------------------------|-----------------------------------------|
-| Tab               | 1 tab IG only                      | 2 tab: Instagram + Direct URL           |
-| Source video      | IG via yt-dlp                      | IG + Direct URL (.mp4/.mov/.gif)        |
-| GIF               | Tidak ada                          | Download → MP4 → upload Dropbox         |
-| MP4 direct        | Tidak ada                          | Pakai URL langsung, tanpa upload        |
-| Carousel          | playlist_items (crash jika foto)   | _pick_entry + ignoreerrors              |
-| Credits UI        | 4 field (Brand/Client/Anim/Logo)   | 2 field + mentions + preview realtime   |
-| Credit format     | for @client | Credit: @anim          | Credit: @mentions | from @poster        |
-| Title suffix      | Semua: "Logo Animation"            | Per board, Brand Identity = berbeda     |
-| CTA title         | CTA_VARIANTS panjang, sering over  | CTA_TITLE_VARIANTS pendek + A/B test    |
-| Queue             | st.dataframe (read-only)           | st.data_editor (editable)               |
-| Export flow       | 1 klik langsung upload             | 3 step: Preview → Edit → Upload         |
-| Scheduler         | end_date saja                      | + start_date dengan logika jam          |
-| Sektor            | 34                                 | 49 (+ Mobile App + Agency & Creative)   |
-| SECTOR_SEO_HINT   | Tidak ada                          | 49 mapping diinjeksi ke prompt          |
-| BOARD_SEO_TONE    | Tidak ada                          | Per board + instruksi Brand Identity    |
-| utils/media.py    | Tidak ada                          | Baru: download_direct, convert, duration|
-| Session state     | 5 key                              | 7 key (+ stage_direct, current_direct)  |
-| CSV naming        | bulk_logo_ saja                    | Auto-detect IG/NON-IG/mixed             |
+## APP.PY — CLEANUP LOG (v7.1)
+Unused variables yang sudah dihapus:
+- AFFILIATE_LINK: dihapus dari secrets block dan logic link_field
+- DROPBOX_FOLDER: dihapus dari secrets block (tidak dipakai di mana pun)
+- uploader_id di current dict: dihapus (hanya dipakai sebagai arg detect_credits)
+- video_path_for_thumb alias: disederhanakan jadi langsung video_path
+- import hashlib: dipindah dari dalam block if ke top-level imports
 
 ## KNOWN ISSUES & FIXES
 - yt-dlp carousel "No video formats found" → fix via _pick_entry + ignoreerrors
@@ -254,7 +241,7 @@ imageio-ffmpeg>=0.4.9
 - use_container_width deprecated → diganti width=1400
 - Variable 'col' conflict di dict comprehension → diganti jadi 'c'
 - Gemini deprecated → migrated ke Groq llama-3.3-70b-versatile
-- Dropbox App Folder token tidak bisa akses root → DROPBOX_FOLDER="/"
+- Dropbox App Folder token tidak bisa akses root → session_folder mulai dari "/"
 - Model generate 3D → instruksi "never mention 3D" di prompt
 - Preview video Safari iPadOS → tambah link_button fallback
 - GIF dari direct URL → convert ke MP4 via ffmpeg (utils/media.py)
