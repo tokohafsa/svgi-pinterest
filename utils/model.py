@@ -201,6 +201,40 @@ Return:
         return {"brand_name": "", "client": None, "animator": f"@{uploader_id}", "logo_maker": None}
 
 
+def _fit_cta_for_title(pin_title: str, preferred_cta: str, max_len: int = 100) -> str:
+    """
+    Pilih CTA yang fit dalam budget karakter untuk title pin Pinterest (max 100 chars).
+
+    Urutan:
+    1. Coba preferred_cta (CTA_TITLE_VARIANTS[cta_index])
+    2. Coba semua CTA_TITLE_VARIANTS secara berurutan, ambil yang pertama fit
+    3. Fallback ke CTA_TITLE_VARIANTS terpendek, truncate di batas kata kalau masih tidak fit
+    """
+    budget = max_len - len(pin_title) - 2  # 2 = len(". ")
+
+    def fits(cta: str) -> bool:
+        return len(cta) <= budget
+
+    def truncate_at_word(cta: str) -> str:
+        if len(cta) <= budget:
+            return cta
+        cut = cta[:budget].rsplit(" ", 1)[0].rstrip(" .,!?")
+        return cut if cut else cta[:budget]
+
+    # Step 1: preferred
+    if fits(preferred_cta):
+        return preferred_cta
+
+    # Step 2: coba semua varian pendek
+    for cta in CTA_TITLE_VARIANTS:
+        if fits(cta):
+            return cta
+
+    # Step 3: fallback terpendek, truncate kalau perlu
+    shortest = min(CTA_TITLE_VARIANTS, key=len)
+    return truncate_at_word(shortest)
+
+
 def generate_content(
     pin_title: str,
     brand_name: str,
@@ -216,8 +250,11 @@ def generate_content(
     """Generate SEO title, description, keywords."""
     groq_client = Groq(api_key=api_key)
     keyword_context = BOARDS_KEYWORD_CONTEXT.get(board, BOARDS_KEYWORD_CONTEXT["Logo Animations"])
-    cta_title = CTA_VARIANTS[cta_index % len(CTA_VARIANTS)]
-    cta_desc = CTA_VARIANTS[(cta_index + 1) % len(CTA_VARIANTS)]
+    preferred_cta_title = CTA_TITLE_VARIANTS[cta_index % len(CTA_TITLE_VARIANTS)]
+    cta_desc = CTA_VARIANTS[cta_index % len(CTA_VARIANTS)]
+
+    # A/B test CTA title — Python hitung dulu, Groq generate kalau semua tidak fit
+    cta_title = _fit_cta_for_title(pin_title, preferred_cta_title)
 
     # Build credit line
     parts = []
