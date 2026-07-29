@@ -29,9 +29,7 @@ SECTORS = [
     "Content Creation Agency", "Freelance Designer", "Independent Animator",
 ]
 
-# Per-sector SEO hint — injected into prompt untuk guide seo_body dan keywords
 SECTOR_SEO_HINT = {
-    # General
     "Automotive": "Mention speed, precision engineering, bold motion, and automotive brand energy. Keywords: car brand animation, automotive logo reveal, vehicle brand motion.",
     "Aviation & Aerospace": "Mention precision, altitude, futuristic motion, and aerospace identity. Keywords: aviation logo animation, aerospace brand, flight brand motion.",
     "Beauty & Cosmetics": "Mention elegance, glow, fluid motion, and beauty brand identity. Keywords: beauty brand animation, cosmetics logo reveal, skincare brand motion.",
@@ -65,7 +63,6 @@ SECTOR_SEO_HINT = {
     "Telecommunications": "Mention connectivity, signal motion, and telecom brand identity. Keywords: telecom logo animation, network brand reveal, connectivity brand motion.",
     "Travel & Tourism": "Mention wanderlust, smooth motion, and travel brand personality. Keywords: travel logo animation, tourism brand reveal, destination brand motion.",
     "YouTube & Content Creation": "Mention creator energy, channel identity, intro animation, and content brand motion. Keywords: YouTube logo animation, channel intro, content creator brand motion.",
-    # Mobile App
     "Mobile App & Startup": "Mention app launch energy, startup brand identity, clean UI motion, and digital product branding. Keywords: app logo animation, startup brand motion, mobile app brand reveal, app icon animation.",
     "Fintech & Mobile Banking": "Mention financial trust, clean digital motion, secure brand identity, and fintech product launch. Keywords: fintech logo animation, mobile banking brand, digital finance brand motion, payment app identity.",
     "Food Delivery & Restaurant App": "Mention appetite, speed, warm brand energy, and food app identity. Keywords: food app logo animation, delivery brand motion, restaurant app brand reveal, food tech identity.",
@@ -76,7 +73,6 @@ SECTOR_SEO_HINT = {
     "Gaming & Mobile Gaming": "Mention bold game studio identity, launch screen animation, mobile game brand energy. Keywords: mobile game logo animation, game studio brand motion, gaming app brand reveal, mobile gaming identity.",
     "Education & Learning App": "Mention knowledge, growth, friendly brand motion, and edtech app identity. Keywords: edtech logo animation, learning app brand motion, education app brand reveal, e-learning app identity.",
     "Travel & Navigation App": "Mention exploration, smooth motion, travel tech brand identity. Keywords: travel app logo animation, navigation brand motion, map app brand reveal, travel tech identity.",
-    # Agency & Creative
     "Branding & Design Agency": "Mention brand craftsmanship, visual identity systems, agency portfolio, and professional brand motion. Keywords: branding agency logo animation, design agency brand reveal, identity studio motion, brand strategy in motion.",
     "Motion Design Studio": "Mention studio craft, motion reel, animation showreel, and studio identity. Keywords: motion design studio logo, animation studio brand reveal, motion studio identity, design studio intro animation.",
     "Video Production Studio": "Mention cinematic brand energy, production house identity, studio logo reveal. Keywords: video production logo animation, production studio brand motion, film studio identity reveal.",
@@ -132,9 +128,6 @@ CTA_VARIANTS = [
     "Bio link has everything you need to get your brand animated ✨",
 ]
 
-# CTA khusus untuk title pin — pendek, max 20 chars, supaya tidak truncate di Pinterest
-# Budget: Pinterest limit 100 chars. Suffix "Animated Brand Identity" = 24 chars.
-# Sisa untuk brand name + ". " + CTA = 74 chars — aman untuk nama brand normal.
 CTA_TITLE_VARIANTS = [
     "See our bio link 🔗",
     "Check our bio link ✨",
@@ -153,8 +146,36 @@ CTA_TITLE_VARIANTS = [
 ]
 
 
+def _build_credit_line(poster: str, mentions: list) -> str:
+    """
+    Build credit line from poster and mentions.
+
+    Format: "Credit: @poster on Instagram | @mention1 @mention2"
+
+    - poster  : @username yang posting (animator/creator)
+    - mentions: list of @username lain yang disebut di caption
+    """
+    parts = []
+    if poster and poster not in ("null", ""):
+        parts.append(f"Credit: {poster} on Instagram")
+    if mentions:
+        clean = [m for m in mentions if m and m not in ("null", "")]
+        if clean:
+            parts.append(" ".join(clean))
+    return " | ".join(parts) if parts else ""
+
+
 def detect_credits(caption: str, uploader_id: str, api_key: str) -> dict:
-    """Detect client, animator, logo_maker, brand_name from caption only."""
+    """
+    Detect poster and mentions from caption.
+
+    Returns:
+        {
+            "brand_name": str,
+            "poster": "@uploader_id",
+            "mentions": ["@other1", "@other2", ...]
+        }
+    """
     client = Groq(api_key=api_key)
 
     prompt = f"""Analyze this Instagram caption for a logo animation post.
@@ -163,26 +184,20 @@ Extract credit information. Return ONLY valid JSON, no markdown, no backticks.
 CAPTION:
 \"\"\"{caption}\"\"\"
 
-UPLOADER_ID (the IG account that posted this — treat as the animator/creator by default): @{uploader_id}
+UPLOADER_ID (the IG account that posted this): @{uploader_id}
 
 Rules:
-- "animator": ALWAYS @{uploader_id}. Never change this.
-- "client": @username of the person/brand the animation was made FOR or WITH.
-  Look for: "for @", "with @", "client @", "made for @", "made with @", or any @mention that is NOT the uploader.
-  Example: "made with my wife - @ganihakobian" → client = @ganihakobian.
-  Example: "logo animation for @nikesports" → client = @nikesports.
-  null if no other @mention found.
-- "logo_maker": @username explicitly credited as logo designer/graphic designer.
-  Look for: "logo by @", "design by @", "graphic by @", "designed by @".
-  null if not found. Do NOT assign client as logo_maker.
-- "brand_name": plain name of the brand/logo being animated. Infer from context. If unclear, use empty string.
+- "poster": ALWAYS "@{uploader_id}". Never change this.
+- "mentions": list of ALL other @usernames mentioned in the caption, excluding @{uploader_id}.
+  Example: "made with @ganihakobian for @nikesports" → mentions = ["@ganihakobian", "@nikesports"]
+  Empty list [] if no other @mentions found.
+- "brand_name": plain name of the brand/logo being animated. Infer from context. Empty string if unclear.
 
 Return:
 {{
   "brand_name": "...",
-  "client": "@username or null",
-  "animator": "@{uploader_id}",
-  "logo_maker": "@username or null"
+  "poster": "@{uploader_id}",
+  "mentions": ["@username1", "@username2"]
 }}"""
 
     try:
@@ -196,19 +211,24 @@ Return:
         text = re.sub(r"^```json\s*", "", text)
         text = re.sub(r"^```\s*", "", text)
         text = re.sub(r"\s*```$", "", text)
-        return json.loads(text.strip())
+        data = json.loads(text.strip())
+        # Guarantee correct types
+        return {
+            "brand_name": data.get("brand_name", ""),
+            "poster": f"@{uploader_id}",
+            "mentions": data.get("mentions", []) if isinstance(data.get("mentions"), list) else [],
+        }
     except Exception:
-        return {"brand_name": "", "client": None, "animator": f"@{uploader_id}", "logo_maker": None}
+        return {
+            "brand_name": "",
+            "poster": f"@{uploader_id}",
+            "mentions": [],
+        }
 
 
 def _fit_cta_for_title(pin_title: str, preferred_cta: str, max_len: int = 100) -> str:
     """
     Pilih CTA yang fit dalam budget karakter untuk title pin Pinterest (max 100 chars).
-
-    Urutan:
-    1. Coba preferred_cta (CTA_TITLE_VARIANTS[cta_index])
-    2. Coba semua CTA_TITLE_VARIANTS secara berurutan, ambil yang pertama fit
-    3. Fallback ke CTA_TITLE_VARIANTS terpendek, truncate di batas kata kalau masih tidak fit
     """
     budget = max_len - len(pin_title) - 2  # 2 = len(". ")
 
@@ -221,16 +241,13 @@ def _fit_cta_for_title(pin_title: str, preferred_cta: str, max_len: int = 100) -
         cut = cta[:budget].rsplit(" ", 1)[0].rstrip(" .,!?")
         return cut if cut else cta[:budget]
 
-    # Step 1: preferred
     if fits(preferred_cta):
         return preferred_cta
 
-    # Step 2: coba semua varian pendek
     for cta in CTA_TITLE_VARIANTS:
         if fits(cta):
             return cta
 
-    # Step 3: fallback terpendek, truncate kalau perlu
     shortest = min(CTA_TITLE_VARIANTS, key=len)
     return truncate_at_word(shortest)
 
@@ -238,37 +255,38 @@ def _fit_cta_for_title(pin_title: str, preferred_cta: str, max_len: int = 100) -
 def generate_content(
     pin_title: str,
     brand_name: str,
-    client: str,
-    animator: str,
-    logo_maker: str,
+    poster: str,
+    mentions: list,
     board: str,
     caption: str,
     api_key: str,
     cta_index: int = 0,
     sector: str = "",
 ) -> dict:
-    """Generate SEO title, description, keywords."""
+    """
+    Generate SEO title, description, keywords for a Pinterest pin.
+
+    Args:
+        pin_title  : e.g. "Nike Logo Animation"
+        brand_name : e.g. "Nike"
+        poster     : @username of the animator/creator (always the uploader)
+        mentions   : list of other @usernames from caption
+        board      : Pinterest board name
+        caption    : original Instagram caption
+        api_key    : Groq API key
+        cta_index  : rotating CTA index
+        sector     : optional sector string
+    """
     groq_client = Groq(api_key=api_key)
     keyword_context = BOARDS_KEYWORD_CONTEXT.get(board, BOARDS_KEYWORD_CONTEXT["Logo Animations"])
     preferred_cta_title = CTA_TITLE_VARIANTS[cta_index % len(CTA_TITLE_VARIANTS)]
     cta_desc = CTA_VARIANTS[cta_index % len(CTA_VARIANTS)]
 
-    # A/B test CTA title — Python hitung dulu, Groq generate kalau semua tidak fit
     cta_title = _fit_cta_for_title(pin_title, preferred_cta_title)
-
-    # Build credit line
-    parts = []
-    if client and client not in ("null", ""):
-        parts.append(f"IG: {client}")
-    if animator:
-        parts.append(f"Credit: {animator} on Instagram")
-    if logo_maker and logo_maker not in ("null", ""):
-        parts.append(f"Logo by {logo_maker}")
-    credit_line = " | ".join(parts) if parts else f"Credit: {animator} on Instagram"
+    credit_line = _build_credit_line(poster, mentions)
 
     sector_ctx = f" | Sector: {sector}" if sector else ""
     board_tone = BOARD_SEO_TONE.get(board, BOARD_SEO_TONE["Logo Animations"])
-
     sector_hint = SECTOR_SEO_HINT.get(sector, "")
     sector_instruction = (
         f"\nSECTOR SEO INSTRUCTION ({sector}): {sector_hint}"
@@ -322,7 +340,6 @@ Return:
         data = json.loads(text.strip())
 
         pin_title_full = f"{pin_title}. {cta_title}"
-        # Description: NO title repeat — starts directly with credit line
         full_description = f"{credit_line}\n{data['seo_body']}\n{cta_desc}"
 
         return {
