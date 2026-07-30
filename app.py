@@ -3,6 +3,7 @@ import pandas as pd
 import tempfile
 import os
 import hashlib
+import random
 from datetime import datetime, date, timedelta
 import io
 
@@ -491,6 +492,12 @@ with tab_direct:
                         sector=cur.get("sector", ""),
                     )
                     cur.update(result)
+                    # Tab Direct: credit adalah plain text bebas, bukan @poster
+                    # Override baris pertama description supaya tidak ada "on Instagram"
+                    if credit.strip():
+                        lines = result["description"].split("\n")
+                        lines[0] = f"Credit: {credit.strip()}"
+                        cur["description"] = "\n".join(lines)
                     st.session_state.stage_direct = "generated"
                     st.rerun()
                 except Exception as e:
@@ -600,19 +607,22 @@ if st.session_state.pins:
                     st.warning("Queue is empty.")
                 else:
                     export = []
+                    pins_shuffled = list(pins_now)
+                    random.shuffle(pins_shuffled)
+
                     if use_schedule:
                         end_dt = datetime.combine(sched_end, datetime.min.time())
                         schedules = generate_schedule(
                             end_dt,
-                            len(pins_now),
+                            len(pins_shuffled),
                             start_date=sched_start,
                         )
-                        for i, pin in enumerate(pins_now):
+                        for i, pin in enumerate(pins_shuffled):
                             p = {c: pin.get(c, "") for c in CSV_COLUMNS}
                             p["Publish date"] = schedules[i]
                             export.append(p)
                     else:
-                        for pin in pins_now:
+                        for pin in pins_shuffled:
                             p = {c: pin.get(c, "") for c in CSV_COLUMNS}
                             p["Publish date"] = ""
                             export.append(p)
