@@ -232,9 +232,9 @@ def _generate_cta_title(pin_title: str, cta_index: int, api_key: str, max_len: i
     """
     budget = max_len - len(pin_title) - 2
 
-    # Pilih 2 contoh referensi yang dirotasi
+    # Pilih 2 contoh referensi yang dirotasi dengan jarak +5 agar tone lebih kontras
     ref_a = CTA_TITLE_REFERENCES[cta_index % len(CTA_TITLE_REFERENCES)]
-    ref_b = CTA_TITLE_REFERENCES[(cta_index + 1) % len(CTA_TITLE_REFERENCES)]
+    ref_b = CTA_TITLE_REFERENCES[(cta_index + 5) % len(CTA_TITLE_REFERENCES)]
 
     prompt = f"""You write short Pinterest pin CTAs. Return ONLY the CTA text, no quotes, no explanation.
 
