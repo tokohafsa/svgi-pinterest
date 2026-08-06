@@ -1,5 +1,5 @@
 SVGI PINTEREST PIPELINE — MEMORY FILE
-Generated: 2026-07-29 (updated v7.1)
+Generated: 2026-08-06 (updated v7.2)
 ======================================
 
 ## AKUN
@@ -117,21 +117,38 @@ Suffix per board (BOARD_TITLE_SUFFIX di model.py):
 - Famous Brand ...            → "Logo Animation"
 - Brand Identity in Motion    → "Animated Brand Identity"
 
-Contoh board biasa:    "Vortex Logo Animation. See bio link 🔗"
-Contoh Brand Identity: "Nike Animated Brand Identity. Bio link 🔗"
+Contoh board biasa:    "Vortex Logo Animation. Your logo can move like this. Bio link shows you how ✨"
+Contoh Brand Identity: "Nike Animated Brand Identity. Want your logo animated? Our bio link takes you there 🔗"
 
-## CTA TITLE — A/B TEST OTOMATIS (_fit_cta_for_title)
+## CTA TITLE — MODEL-GENERATED (_generate_cta_title)
 Pinterest limit title = 100 chars. CTA title dipisah dari CTA description.
-Fungsi pure Python, tidak pakai Groq.
+Fungsi call Groq (bukan pure Python), dipanggil di dalam generate_content().
 
-CTA_TITLE_VARIANTS (14 varian, max ~20 chars):
-"See our bio link 🔗", "Check our bio link ✨", "Tap the bio link 🎬",
-"Bio link 🔗", "Visit our bio link 💡", "Link in bio 🎯", dll.
+CTA_TITLE_VARIANTS sudah dihapus. Diganti CTA_TITLE_REFERENCES (10 contoh referensi tone):
+- "Visit our profile to bring your logo to life 🎬"
+- "Want your logo animated? Our bio link takes you there 🔗"
+- "Turn your static logo into motion, see our bio link 🎬"
+- "Your logo deserves to move. Find out how via our bio link ✨"
+- "Ready to animate your brand? Check the link in our bio 💡"
+- "Find the right animator for your brand, check our bio link 💡"
+- "Looking for something like this? Our bio link is where to start 🎯"
+- "What if your logo moved like this? Bio link has answers 🔗"
+- "Your logo can move like this. Bio link shows you how ✨"
+- "Imagine your brand in motion. Start with our bio link 🎬"
 
-Logika _fit_cta_for_title(pin_title, preferred_cta, max_len=100):
-1. Coba preferred_cta (CTA_TITLE_VARIANTS[cta_index])
-2. Coba semua CTA_TITLE_VARIANTS secara berurutan, ambil yang pertama fit
-3. Fallback ke varian terpendek, truncate di batas kata kalau masih tidak fit
+Logika _generate_cta_title(pin_title, cta_index, api_key, max_len=100):
+1. Hitung budget = 100 - len(pin_title) - 2 (untuk ". ")
+2. Pilih 2 referensi dari CTA_TITLE_REFERENCES dirotasi via cta_index (ref_a, ref_b)
+3. Prompt ke Groq: generate 1 CTA, max budget chars, soft-sell natural,
+   2 referensi sebagai panduan tone (bukan untuk di-copy)
+4. Validasi panjang output — kalau over budget, truncate di batas kata
+5. Fallback ke referensi terpendek yang fit kalau Groq gagal
+
+Catatan desain:
+- Hanya 2 referensi per call (bukan semua 10) agar model leluasa berkreasi
+- 2 referensi dirotasi via cta_index sehingga tone anchor bervariasi antar pin
+- Extra 1 Groq API call per generate_content() — konsekuensi yang diterima
+- _fit_cta_for_title() sudah dihapus dari codebase
 
 ## CTA DESCRIPTION (CTA_VARIANTS)
 14 rotasi soft-sell, dipakai di baris terakhir description.
@@ -245,7 +262,9 @@ Unused variables yang sudah dihapus:
 - Model generate 3D → instruksi "never mention 3D" di prompt
 - Preview video Safari iPadOS → tambah link_button fallback
 - GIF dari direct URL → convert ke MP4 via ffmpeg (utils/media.py)
-- Title truncated di Pinterest → CTA_TITLE_VARIANTS + _fit_cta_for_title()
+- Title truncated di Pinterest → diatasi via budget chars dinamis di _generate_cta_title()
+- CTA title terlalu pendek dan generik → migrasi dari hardcoded CTA_TITLE_VARIANTS (pure Python)
+  ke model-generated _generate_cta_title() dengan tone referensi soft-sell natural (v7.2)
 
 ## DEPLOYMENT
 - GitHub repo: tokohafsa/svgi-pinterest (public, required Streamlit Cloud free tier)
