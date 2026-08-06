@@ -128,21 +128,17 @@ CTA_VARIANTS = [
     "Bio link has everything you need to get your brand animated ✨",
 ]
 
-CTA_TITLE_VARIANTS = [
-    "See our bio link 🔗",
-    "Check our bio link ✨",
-    "Tap the bio link 🎬",
-    "Bio link 🔗",
-    "Visit our bio link 💡",
-    "Link in bio 🎯",
-    "See bio link 🔗",
-    "Check bio link ✨",
-    "Tap bio link 🎬",
-    "Bio link below 🔗",
-    "Find it in bio 💡",
-    "Open bio link 🎯",
-    "Bio link inside 🔗",
-    "Link in our bio ✨",
+CTA_TITLE_REFERENCES = [
+    "Visit our profile to bring your logo to life 🎬",
+    "Want your logo animated? Our bio link takes you there 🔗",
+    "Turn your static logo into motion, see our bio link 🎬",
+    "Your logo deserves to move. Find out how via our bio link ✨",
+    "Ready to animate your brand? Check the link in our bio 💡",
+    "Find the right animator for your brand, check our bio link 💡",
+    "Looking for something like this? Our bio link is where to start 🎯",
+    "What if your logo moved like this? Bio link has answers 🔗",
+    "Your logo can move like this. Bio link shows you how ✨",
+    "Imagine your brand in motion. Start with our bio link 🎬",
 ]
 
 
@@ -226,30 +222,59 @@ Return:
         }
 
 
-def _fit_cta_for_title(pin_title: str, preferred_cta: str, max_len: int = 100) -> str:
+def _generate_cta_title(pin_title: str, cta_index: int, api_key: str, max_len: int = 100) -> str:
     """
-    Pilih CTA yang fit dalam budget karakter untuk title pin Pinterest (max 100 chars).
+    Generate CTA untuk title pin via Groq.
+
+    Budget chars = max_len - len(pin_title) - 2 (untuk ". ").
+    Dua contoh referensi dari CTA_TITLE_REFERENCES dirotasi via cta_index.
+    Fallback ke referensi terpendek yang fit kalau Groq gagal.
     """
-    budget = max_len - len(pin_title) - 2  # 2 = len(". ")
+    budget = max_len - len(pin_title) - 2
 
-    def fits(cta: str) -> bool:
-        return len(cta) <= budget
+    # Pilih 2 contoh referensi yang dirotasi
+    ref_a = CTA_TITLE_REFERENCES[cta_index % len(CTA_TITLE_REFERENCES)]
+    ref_b = CTA_TITLE_REFERENCES[(cta_index + 1) % len(CTA_TITLE_REFERENCES)]
 
-    def truncate_at_word(cta: str) -> str:
+    prompt = f"""You write short Pinterest pin CTAs. Return ONLY the CTA text, no quotes, no explanation.
+
+RULES:
+- Max {budget} characters (hard limit, count carefully)
+- Tone: soft-sell, natural, like a real person writing — not a marketer
+- Must mention "bio link" or "profile" as the destination
+- Value proposition: animate a static logo, or find a motion designer
+- Do NOT start with "Discover", "Explore", "Unlock", "Elevate"
+- No em dashes
+
+STYLE REFERENCES (do not copy, use as tone guide):
+- {ref_a}
+- {ref_b}
+
+Generate 1 CTA now:"""
+
+    try:
+        client = Groq(api_key=api_key)
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.8,
+            max_tokens=60,
+        )
+        cta = response.choices[0].message.content.strip().strip('"').strip("'")
+        # Validasi: tidak boleh melebihi budget
         if len(cta) <= budget:
             return cta
+        # Kalau over budget, truncate di batas kata
         cut = cta[:budget].rsplit(" ", 1)[0].rstrip(" .,!?")
         return cut if cut else cta[:budget]
-
-    if fits(preferred_cta):
-        return preferred_cta
-
-    for cta in CTA_TITLE_VARIANTS:
-        if fits(cta):
-            return cta
-
-    shortest = min(CTA_TITLE_VARIANTS, key=len)
-    return truncate_at_word(shortest)
+    except Exception:
+        # Fallback: cari referensi terpendek yang fit
+        fits = [r for r in CTA_TITLE_REFERENCES if len(r) <= budget]
+        if fits:
+            return min(fits, key=len)
+        shortest = min(CTA_TITLE_REFERENCES, key=len)
+        cut = shortest[:budget].rsplit(" ", 1)[0].rstrip(" .,!?")
+        return cut if cut else shortest[:budget]
 
 
 def generate_content(
@@ -279,10 +304,9 @@ def generate_content(
     """
     groq_client = Groq(api_key=api_key)
     keyword_context = BOARDS_KEYWORD_CONTEXT.get(board, BOARDS_KEYWORD_CONTEXT["Logo Animations"])
-    preferred_cta_title = CTA_TITLE_VARIANTS[cta_index % len(CTA_TITLE_VARIANTS)]
     cta_desc = CTA_VARIANTS[cta_index % len(CTA_VARIANTS)]
 
-    cta_title = _fit_cta_for_title(pin_title, preferred_cta_title)
+    cta_title = _generate_cta_title(pin_title, cta_index, api_key)
     credit_line = _build_credit_line(poster, mentions)
 
     sector_ctx = f" | Sector: {sector}" if sector else ""
