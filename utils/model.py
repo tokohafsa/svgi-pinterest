@@ -1,4 +1,5 @@
 from groq import Groq
+from google import genai
 import json
 import re
 
@@ -222,13 +223,13 @@ Return:
         }
 
 
-def _generate_cta_title(pin_title: str, cta_index: int, api_key: str, max_len: int = 100) -> str:
+def _generate_cta_title(pin_title: str, cta_index: int, gemini_key: str, max_len: int = 100) -> str:
     """
-    Generate CTA untuk title pin via Groq.
+    Generate CTA untuk title pin via Gemini.
 
     Budget chars = max_len - len(pin_title) - 2 (untuk ". ").
-    Dua contoh referensi dari CTA_TITLE_REFERENCES dirotasi via cta_index.
-    Fallback ke referensi terpendek yang fit kalau Groq gagal.
+    Dua contoh referensi dari CTA_TITLE_REFERENCES dirotasi via cta_index (+5 offset).
+    Fallback ke referensi terpendek yang fit kalau Gemini gagal.
     """
     budget = max_len - len(pin_title) - 2
 
@@ -253,14 +254,12 @@ STYLE REFERENCES (do not copy, use as tone guide):
 Generate 1 CTA now:"""
 
     try:
-        client = Groq(api_key=api_key)
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.8,
-            max_tokens=60,
+        gemini_client = genai.Client(api_key=gemini_key)
+        response = gemini_client.models.generate_content(
+            model="gemini-3.1-flash-lite",
+            contents=prompt,
         )
-        cta = response.choices[0].message.content.strip().strip('"').strip("'")
+        cta = response.text.strip().strip('"').strip("'")
         # Validasi: tidak boleh melebihi budget
         if len(cta) <= budget:
             return cta
@@ -284,7 +283,8 @@ def generate_content(
     mentions: list,
     board: str,
     caption: str,
-    api_key: str,
+    groq_key: str,
+    gemini_key: str,
     cta_index: int = 0,
     sector: str = "",
 ) -> dict:
@@ -298,15 +298,16 @@ def generate_content(
         mentions   : list of other @usernames from caption
         board      : Pinterest board name
         caption    : original Instagram caption
-        api_key    : Groq API key
+        groq_key   : Groq API key (untuk seo_body + keywords)
+        gemini_key : Google Gemini API key (untuk CTA title)
         cta_index  : rotating CTA index
         sector     : optional sector string
     """
-    groq_client = Groq(api_key=api_key)
+    groq_client = Groq(api_key=groq_key)
     keyword_context = BOARDS_KEYWORD_CONTEXT.get(board, BOARDS_KEYWORD_CONTEXT["Logo Animations"])
     cta_desc = CTA_VARIANTS[cta_index % len(CTA_VARIANTS)]
 
-    cta_title = _generate_cta_title(pin_title, cta_index, api_key)
+    cta_title = _generate_cta_title(pin_title, cta_index, gemini_key)
     credit_line = _build_credit_line(poster, mentions)
 
     sector_ctx = f" | Sector: {sector}" if sector else ""
