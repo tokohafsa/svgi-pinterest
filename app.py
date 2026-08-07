@@ -19,6 +19,7 @@ st.set_page_config(page_title="SVGI Pinterest Tool", page_icon="🎬", layout="w
 # ── Secrets ───────────────────────────────────────────────────────────────────
 try:
     GROQ_KEY = st.secrets["GROQ_API_KEY"]
+    GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
     DROPBOX_TOKEN = st.secrets.get("DROPBOX_TOKEN", "")
     DROPBOX_APP_KEY = st.secrets.get("DROPBOX_APP_KEY", "")
     DROPBOX_APP_SECRET = st.secrets.get("DROPBOX_APP_SECRET", "")
@@ -284,7 +285,8 @@ with tab_ig:
                         mentions=cur.get("mentions", []),
                         board=board,
                         caption=cur["caption"],
-                        api_key=GROQ_KEY,
+                        groq_key=GROQ_KEY,
+                        gemini_key=GEMINI_KEY,
                         cta_index=st.session_state.cta_counter,
                         sector=cur.get("sector", ""),
                     )
@@ -487,7 +489,8 @@ with tab_direct:
                         mentions=[],
                         board=board,
                         caption=pin_name,
-                        api_key=GROQ_KEY,
+                        groq_key=GROQ_KEY,
+                        gemini_key=GEMINI_KEY,
                         cta_index=st.session_state.cta_counter,
                         sector=cur.get("sector", ""),
                     )
