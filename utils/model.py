@@ -242,6 +242,7 @@ def _generate_cta_title(pin_title: str, cta_index: int, gemini_key: str, max_len
 RULES:
 - Max {budget} characters (hard limit, count carefully)
 - Tone: soft-sell, natural, like a real person writing — not a marketer
+- ACT AS CURATOR, NOT WORKS OWNER OR SERVICE PROVIDER, so there is no "my works"
 - Must mention "bio link" or "profile" as the destination
 - Value proposition: animate a static logo, or find a motion designer
 - Do NOT start with "Discover", "Explore", "Unlock", "Elevate"
