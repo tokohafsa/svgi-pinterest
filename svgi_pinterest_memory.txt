@@ -11,11 +11,11 @@ Automate pipeline dari Instagram / Direct URL → Dropbox → Pinterest CSV bulk
 
 ## STACK
 - Framework: Streamlit (deployed ke Streamlit Cloud)
-- AI/Model: Groq API (llama-3.3-70b-versatile)
+- AI/Model: Groq API (llama-3.3-70b-versatile) dan gemini-3.1-flash-lite
 - Video fetch IG: yt-dlp
 - Video fetch Direct: requests (download langsung)
 - Frame extraction: imageio-ffmpeg (bundle binary)
-- Storage: Dropbox API (App Folder: /Apps/SVGI Pinterest/)
+- Storage: Dropbox API (App Folder: /Apps/SVGI Pinterest/SVGI)
 - Output: CSV + video tersimpan ke folder session di Dropbox
 
 ## STRUKTUR FILE
@@ -53,6 +53,7 @@ groq>=0.9.0
 pandas>=2.0.0
 requests>=2.31.0
 imageio-ffmpeg>=0.4.9
+google-generativeai>=0.8.0
 
 ## PIPELINE FLOW — TAB 1 (Instagram)
 1. New Session → buat folder Dropbox: /2026-07-29_1430
