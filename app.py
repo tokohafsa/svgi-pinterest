@@ -86,7 +86,7 @@ with col_new:
     if st.button("🆕 New Session", type="primary"):
         today_str = date.today().strftime("%Y-%m-%d")
         time_str = datetime.now().strftime("%H%M")
-        st.session_state.session_folder = f"/{today_str}_{time_str}"
+        st.session_state.session_folder = f"/SVGI/{today_str}_{time_str}"
         st.session_state.pins = []
         st.session_state.cta_counter = 0
         st.session_state.stage = "input"
