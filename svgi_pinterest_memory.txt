@@ -53,7 +53,7 @@ groq>=0.9.0
 pandas>=2.0.0
 requests>=2.31.0
 imageio-ffmpeg>=0.4.9
-google-generativeai>=0.8.0
+google-genai>=0.8.0
 
 ## PIPELINE FLOW — TAB 1 (Instagram)
 1. New Session → buat folder Dropbox: /2026-07-29_1430
