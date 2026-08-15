@@ -1,4 +1,3 @@
-from groq import Groq
 from google import genai
 import json
 import re
@@ -173,8 +172,6 @@ def detect_credits(caption: str, uploader_id: str, api_key: str) -> dict:
             "mentions": ["@other1", "@other2", ...]
         }
     """
-    client = Groq(api_key=api_key)
-
     prompt = f"""Analyze this Instagram caption for a logo animation post.
 Extract credit information. Return ONLY valid JSON, no markdown, no backticks.
 
@@ -198,19 +195,16 @@ Return:
 }}"""
 
     try:
-        response = client.chat.completions.create(
-            model="openai/gpt-oss-120b",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-            max_tokens=600,
+        gemini_client = genai.Client(api_key=api_key)
+        response = gemini_client.models.generate_content(
+            model="gemini-3.1-flash-lite",
+            contents=prompt,
         )
-        text = response.choices[0].message.content.strip()
-        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+        text = response.text.strip()
         text = re.sub(r"^```json\s*", "", text)
         text = re.sub(r"^```\s*", "", text)
         text = re.sub(r"\s*```$", "", text)
         data = json.loads(text.strip())
-        # Guarantee correct types
         return {
             "brand_name": data.get("brand_name", ""),
             "poster": f"@{uploader_id}",
@@ -285,7 +279,6 @@ def generate_content(
     mentions: list,
     board: str,
     caption: str,
-    groq_key: str,
     gemini_key: str,
     cta_index: int = 0,
     sector: str = "",
@@ -300,12 +293,11 @@ def generate_content(
         mentions   : list of other @usernames from caption
         board      : Pinterest board name
         caption    : original Instagram caption
-        groq_key   : Groq API key (untuk seo_body + keywords)
-        gemini_key : Google Gemini API key (untuk CTA title)
+        gemini_key : Google Gemini API key
         cta_index  : rotating CTA index
         sector     : optional sector string
     """
-    groq_client = Groq(api_key=groq_key)
+    gemini_client = genai.Client(api_key=gemini_key)
     keyword_context = BOARDS_KEYWORD_CONTEXT.get(board, BOARDS_KEYWORD_CONTEXT["Logo Animations"])
     cta_desc = CTA_VARIANTS[cta_index % len(CTA_VARIANTS)]
 
@@ -354,14 +346,11 @@ Return:
 }}"""
 
     try:
-        response = groq_client.chat.completions.create(
-            model="openai/gpt-oss-120b",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=800,
+        response = gemini_client.models.generate_content(
+            model="gemini-3.1-flash-lite",
+            contents=prompt,
         )
-        text = response.choices[0].message.content.strip()
-        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+        text = response.text.strip()
         text = re.sub(r"^```json\s*", "", text)
         text = re.sub(r"^```\s*", "", text)
         text = re.sub(r"\s*```$", "", text)
@@ -379,4 +368,4 @@ Return:
     except json.JSONDecodeError as e:
         raise RuntimeError(f"Model returned invalid JSON: {e}")
     except Exception as e:
-        raise RuntimeError(f"Groq API error: {str(e)}")
+        raise RuntimeError(f"Gemini API error: {str(e)}")
