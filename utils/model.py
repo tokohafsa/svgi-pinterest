@@ -199,12 +199,15 @@ Return:
 
     try:
         response = client.chat.completions.create(
-            model="qwen/qwen3.6-27b",
+            model="openai/gpt-oss-120b",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
             max_tokens=300,
+            response_format={"type": "json_object"},
         )
         text = response.choices[0].message.content.strip()
+        # Strip thinking tags (safety net)
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
         text = re.sub(r"^```json\s*", "", text)
         text = re.sub(r"^```\s*", "", text)
         text = re.sub(r"\s*```$", "", text)
@@ -354,12 +357,15 @@ Return:
 
     try:
         response = groq_client.chat.completions.create(
-            model="qwen/qwen3.6-27b",
+            model="openai/gpt-oss-120b",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
             max_tokens=500,
+            response_format={"type": "json_object"},
         )
         text = response.choices[0].message.content.strip()
+        # Strip thinking tags (safety net)
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
         text = re.sub(r"^```json\s*", "", text)
         text = re.sub(r"^```\s*", "", text)
         text = re.sub(r"\s*```$", "", text)
