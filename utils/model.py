@@ -199,7 +199,7 @@ Return:
 
     try:
         response = client.chat.completions.create(
-            model="openai/gpt-oss-120b",
+            model="qwen/qwen3.6-27b",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
             max_tokens=300,
@@ -354,7 +354,7 @@ Return:
 
     try:
         response = groq_client.chat.completions.create(
-            model="openai/gpt-oss-120b",
+            model="qwen/qwen3.6-27b",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
             max_tokens=500,
