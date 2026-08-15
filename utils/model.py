@@ -202,8 +202,7 @@ Return:
             model="openai/gpt-oss-120b",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
-            max_tokens=300,
-            response_format={"type": "json_object"},
+            max_tokens=600,
         )
         text = response.choices[0].message.content.strip()
         text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
@@ -359,7 +358,7 @@ Return:
             model="openai/gpt-oss-120b",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
-            max_tokens=500,
+            max_tokens=800,
             response_format={"type": "json_object"},
         )
         text = response.choices[0].message.content.strip()
