@@ -11,7 +11,7 @@ Automate pipeline dari Instagram / Direct URL → Dropbox → Pinterest CSV bulk
 
 ## STACK
 - Framework: Streamlit (deployed ke Streamlit Cloud)
-- AI/Model: Groq API (llama-3.3-70b-versatile) dan gemini-3.1-flash-lite
+- AI/Model: Groq API (openai/gpt-oss-120b) dan gemini-3.1-flash-lite
 - Video fetch IG: yt-dlp
 - Video fetch Direct: requests (download langsung)
 - Frame extraction: imageio-ffmpeg (bundle binary)
@@ -258,8 +258,8 @@ Unused variables yang sudah dihapus:
 - st.data_editor segfault Python 3.14 + pandas 3.x → sudah kembali pakai data_editor
 - use_container_width deprecated → diganti width=1400
 - Variable 'col' conflict di dict comprehension → diganti jadi 'c'
-- Gemini deprecated → migrated ke Groq llama-3.3-70b-versatile
-- Dropbox App Folder token tidak bisa akses root → session_folder mulai dari "/"
+- Groq llama-3.3-70b-versatile deprecated → migrated ke openai/gpt-oss-120b
+- - Dropbox App Folder token tidak bisa akses root → session_folder mulai dari "/"
 - Model generate 3D → instruksi "never mention 3D" di prompt
 - Preview video Safari iPadOS → tambah link_button fallback
 - GIF dari direct URL → convert ke MP4 via ffmpeg (utils/media.py)
