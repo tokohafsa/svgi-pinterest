@@ -1,5 +1,5 @@
 SVGI PINTEREST PIPELINE — MEMORY FILE
-Generated: 2026-08-06 (updated v7.2)
+Generated: 2026-08-15 (updated v7.4)
 ======================================
 
 ## AKUN
@@ -11,7 +11,8 @@ Automate pipeline dari Instagram / Direct URL → Dropbox → Pinterest CSV bulk
 
 ## STACK
 - Framework: Streamlit (deployed ke Streamlit Cloud)
-- AI/Model: Groq API (openai/gpt-oss-120b) dan gemini-3.1-flash-lite
+- AI/Model: Google Gemini (gemini-3.1-flash-lite) untuk detect_credits + seo_body + keywords + CTA title
+            Groq sudah dihapus sepenuhnya
 - Video fetch IG: yt-dlp
 - Video fetch Direct: requests (download langsung)
 - Frame extraction: imageio-ffmpeg (bundle binary)
@@ -31,25 +32,24 @@ svgi-pinterest/
     ├── __init__.py
     ├── instagram.py              ← yt-dlp fetch + download + carousel fix
     ├── dropbox_client.py         ← upload video + CSV ke Dropbox
-    ├── model.py                  ← Groq: detect credits + generate SEO content
+    ├── model.py                  ← Gemini: detect credits + generate SEO content + CTA title
     ├── scheduler.py              ← distribute publish dates dalam rentang waktu
     ├── thumbnail.py              ← ffmpeg extract frames → base64 jpeg
     └── media.py                  ← download direct URL, convert GIF→MP4, get duration
 
 ## STREAMLIT SECRETS (template)
-GROQ_API_KEY = "..."
+GEMINI_API_KEY = "..."
 DROPBOX_TOKEN = ""
 DROPBOX_APP_KEY = "l1c50p00605pykv"
 DROPBOX_APP_SECRET = "..."
 DROPBOX_REFRESH_TOKEN = "..."
 
-Catatan: AFFILIATE_LINK dan DROPBOX_FOLDER sudah dihapus — keduanya unused.
+Catatan: AFFILIATE_LINK, DROPBOX_FOLDER, dan GROQ_API_KEY sudah dihapus — keduanya unused.
 
 ## REQUIREMENTS.TXT
 streamlit>=1.35.0
 yt-dlp>=2024.1.0
 dropbox>=11.36.0
-groq>=0.9.0
 pandas>=2.0.0
 requests>=2.31.0
 imageio-ffmpeg>=0.4.9
@@ -123,7 +123,7 @@ Contoh Brand Identity: "Nike Animated Brand Identity. Want your logo animated? O
 
 ## CTA TITLE — MODEL-GENERATED (_generate_cta_title)
 Pinterest limit title = 100 chars. CTA title dipisah dari CTA description.
-Fungsi call Groq (bukan pure Python), dipanggil di dalam generate_content().
+Fungsi call Gemini (gemini-3.1-flash-lite), dipanggil di dalam generate_content().
 
 CTA_TITLE_VARIANTS sudah dihapus. Diganti CTA_TITLE_REFERENCES (10 contoh referensi tone):
 - "Visit our profile to bring your logo to life 🎬"
@@ -137,18 +137,20 @@ CTA_TITLE_VARIANTS sudah dihapus. Diganti CTA_TITLE_REFERENCES (10 contoh refere
 - "Your logo can move like this. Bio link shows you how ✨"
 - "Imagine your brand in motion. Start with our bio link 🎬"
 
-Logika _generate_cta_title(pin_title, cta_index, api_key, max_len=100):
+Logika _generate_cta_title(pin_title, cta_index, gemini_key, max_len=100):
 1. Hitung budget = 100 - len(pin_title) - 2 (untuk ". ")
-2. Pilih 2 referensi dari CTA_TITLE_REFERENCES dirotasi via cta_index (ref_a, ref_b)
-3. Prompt ke Groq: generate 1 CTA, max budget chars, soft-sell natural,
+2. Pilih 2 referensi dari CTA_TITLE_REFERENCES dirotasi via cta_index, jarak +5 (bukan +1)
+   agar tone anchor lebih kontras antar pin
+3. Prompt ke Gemini gemini-3.1-flash-lite: generate 1 CTA, max budget chars, soft-sell natural,
    2 referensi sebagai panduan tone (bukan untuk di-copy)
 4. Validasi panjang output — kalau over budget, truncate di batas kata
-5. Fallback ke referensi terpendek yang fit kalau Groq gagal
+5. Fallback ke referensi terpendek yang fit kalau Gemini gagal
 
 Catatan desain:
 - Hanya 2 referensi per call (bukan semua 10) agar model leluasa berkreasi
-- 2 referensi dirotasi via cta_index sehingga tone anchor bervariasi antar pin
-- Extra 1 Groq API call per generate_content() — konsekuensi yang diterima
+- Offset +5 dipilih karena +1 terlalu mirip tonenya, output repetitif
+- Gemini dipilih karena lebih kreatif dari Llama untuk short-form creative writing
+- Extra 1 Gemini API call per generate_content() — konsekuensi yang diterima
 - _fit_cta_for_title() sudah dihapus dari codebase
 
 ## CTA DESCRIPTION (CTA_VARIANTS)
@@ -258,14 +260,21 @@ Unused variables yang sudah dihapus:
 - st.data_editor segfault Python 3.14 + pandas 3.x → sudah kembali pakai data_editor
 - use_container_width deprecated → diganti width=1400
 - Variable 'col' conflict di dict comprehension → diganti jadi 'c'
-- Groq llama-3.3-70b-versatile deprecated → migrated ke openai/gpt-oss-120b
-- - Dropbox App Folder token tidak bisa akses root → session_folder mulai dari "/"
+- google.generativeai deprecated → migrated ke google-genai SDK (from google import genai)
+- Dropbox App Folder token tidak bisa akses root → session_folder mulai dari "/"
 - Model generate 3D → instruksi "never mention 3D" di prompt
 - Preview video Safari iPadOS → tambah link_button fallback
 - GIF dari direct URL → convert ke MP4 via ffmpeg (utils/media.py)
 - Title truncated di Pinterest → diatasi via budget chars dinamis di _generate_cta_title()
 - CTA title terlalu pendek dan generik → migrasi dari hardcoded CTA_TITLE_VARIANTS (pure Python)
   ke model-generated _generate_cta_title() dengan tone referensi soft-sell natural (v7.2)
+- CTA title repetitif dengan Llama → migrasi ke Gemini gemini-3.1-flash-lite (v7.3),
+  offset referensi diubah dari +1 ke +5 agar tone anchor lebih kontras
+- google.generativeai deprecated → pakai google-genai (from google import genai)
+- llama-3.3-70b-versatile deprecated oleh Groq (Aug 2026) → sempat coba openai/gpt-oss-120b
+  tapi return kosong (json_validate_failed) → coba qwen/qwen3.6-27b tapi ada <think> tag issue
+  → semua model Llama 4 juga sudah deprecated di Groq → migrasi penuh ke Gemini (v7.4)
+- Groq dependency dihapus dari requirements.txt dan model.py (v7.4)
 
 ## DEPLOYMENT
 - GitHub repo: tokohafsa/svgi-pinterest (public, required Streamlit Cloud free tier)
