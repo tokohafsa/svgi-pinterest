@@ -83,8 +83,7 @@ google-genai>=0.8.0
 8. Generate CSV Preview → Edit CSV → Upload ke Dropbox (3 step terpisah)
 
 Catatan:
-- GIF: download → convert ke MP4 via ffmpeg → upload Dropbox → Video URL = Dropbox link
-- MP4/MOV: download untuk thumbnail saja → Video URL = direct URL (tidak upload Dropbox)
+- Semua format download → convert ke MP4 via ffmpeg → upload Dropbox → Video URL = Dropbox link
 - Link per pin bersifat manual dan unik, bukan global affiliate link
 
 ## CAROUSEL FIX (instagram.py)
@@ -107,7 +106,7 @@ Catatan:
 - Tidak ada @mention:
   "Credit: @poster on Instagram"
 - Tab Direct (NON-IG):
-  "Credit: {nama animator yang diinput}" — plain text, tidak ada @poster
+  "Credit: {nama animator yang diinput} on Fiverr" — plain text, tidak ada @poster
 
 ## FORMAT TITLE
 {Nama} {suffix board}. {CTA_TITLE}
@@ -284,7 +283,7 @@ Unused variables yang sudah dihapus:
 
 ## AFFILIATE STATUS
 - Pending, sambil fokus naikkan traffic dulu
-- Fiverr via Awin: applied, pending (Indonesia tidak di region list)
+- Fiverr via Awin: approved. shorten link tidd.ly adalah hasil generate url fiverr di awin
 - Payoneer: akun ditutup, annual fee barrier
 
 ## PINTEREST BIO
