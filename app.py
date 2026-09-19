@@ -337,48 +337,34 @@ with tab_direct:
         st.session_state.stage_direct = "input"
 
         tmpdir = tempfile.mkdtemp()
-        is_gif = direct_url.split("?")[0].lower().endswith(".gif")
+        url_hash = hashlib.md5(direct_url.encode()).hexdigest()[:8]
 
-        if is_gif:
-            with st.spinner("Downloading GIF..."):
-                try:
-                    raw_path = download_direct(direct_url, tmpdir)
-                except Exception as e:
-                    st.error(f"❌ Download failed: {e}")
-                    st.stop()
+        with st.spinner("Downloading media..."):
+            try:
+                raw_path = download_direct(direct_url, tmpdir)
+            except Exception as e:
+                st.error(f"❌ Download failed: {e}")
+                st.stop()
 
-            with st.spinner("Converting GIF → MP4..."):
-                try:
-                    # Unique filename per URL to prevent stacking
-                    url_hash = hashlib.md5(direct_url.encode()).hexdigest()[:8]
-                    gif_mp4_name = f"gif_{url_hash}.mp4"
-                    video_path = convert_to_mp4(raw_path, tmpdir, output_name=gif_mp4_name)
-                    st.info("✅ GIF converted to MP4")
-                except Exception as e:
-                    st.error(f"❌ GIF conversion failed: {e}")
-                    st.stop()
+        with st.spinner("Converting to MP4..."):
+            try:
+                video_path = convert_to_mp4(raw_path, tmpdir, output_name=f"media_{url_hash}.mp4")
+            except Exception as e:
+                st.error(f"❌ Conversion failed: {e}")
+                st.stop()
 
-            with st.spinner("Uploading to Dropbox..."):
-                try:
-                    video_url = upload_and_get_link(
-                        video_path, st.session_state.session_folder,
-                        token=DROPBOX_TOKEN,
-                        app_key=DROPBOX_APP_KEY,
-                        app_secret=DROPBOX_APP_SECRET,
-                        refresh_token=DROPBOX_REFRESH_TOKEN,
-                    )
-                except Exception as e:
-                    st.error(f"❌ Dropbox upload failed: {e}")
-                    st.stop()
-        else:
-            # MP4 — use direct URL, no Dropbox upload needed
-            with st.spinner("Downloading MP4 for preview..."):
-                try:
-                    video_path = download_direct(direct_url, tmpdir)
-                except Exception as e:
-                    st.error(f"❌ Download failed: {e}")
-                    st.stop()
-            video_url = direct_url  # Pinterest fetches directly from source URL
+        with st.spinner("Uploading to Dropbox..."):
+            try:
+                video_url = upload_and_get_link(
+                    video_path, st.session_state.session_folder,
+                    token=DROPBOX_TOKEN,
+                    app_key=DROPBOX_APP_KEY,
+                    app_secret=DROPBOX_APP_SECRET,
+                    refresh_token=DROPBOX_REFRESH_TOKEN,
+                )
+            except Exception as e:
+                st.error(f"❌ Dropbox upload failed: {e}")
+                st.stop()
 
         with st.spinner("Extracting thumbnail previews..."):
             duration = get_duration(video_path)
@@ -392,7 +378,6 @@ with tab_direct:
             "duration": duration,
             "frames": frames,
             "thumb_secs": thumb_secs,
-            "is_gif": is_gif,
         }
         st.session_state.stage_direct = "fetched"
         st.rerun()
