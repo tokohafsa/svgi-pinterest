@@ -13,6 +13,7 @@ from utils.model import detect_credits, generate_content, SECTORS, BOARD_TITLE_S
 from utils.scheduler import generate_schedule
 from utils.thumbnail import extract_frames, format_timestamp
 from utils.media import download_direct, convert_to_mp4, get_duration
+from utils.dropbox_autosave import autosave_queue, list_backups, restore_backup, delete_backup
 
 st.set_page_config(page_title="SVGI Pinterest Tool", page_icon="🎬", layout="wide")
 
@@ -47,6 +48,34 @@ def _clear_direct_fields():
     ]:
         if k in st.session_state:
             del st.session_state[k]
+
+
+def _normalize_dropbox_url(url: str) -> str:
+    """Replace dl=0 with dl=1 in Dropbox links."""
+    if not url:
+        return url
+    if "dropbox.com" in url or "dropboxusercontent.com" in url:
+        url = url.replace("dl=0", "dl=1")
+        if "dl=1" not in url:
+            sep = "&" if "?" in url else "?"
+            url = f"{url}{sep}dl=1"
+    return url
+
+
+def _autosave(pins, cta_counter):
+    """Auto-save queue to Dropbox silently. Never raises."""
+    try:
+        autosave_queue(
+            pins=pins,
+            session_folder=st.session_state.session_folder,
+            cta_counter=cta_counter,
+            token=DROPBOX_TOKEN,
+            app_key=DROPBOX_APP_KEY,
+            app_secret=DROPBOX_APP_SECRET,
+            refresh_token=DROPBOX_REFRESH_TOKEN,
+        )
+    except Exception:
+        pass  # Silent — never block the user
 
 
 BOARDS = [
@@ -95,6 +124,51 @@ with col_new:
         if "csv_uploaded_path" in st.session_state:
             del st.session_state["csv_uploaded_path"]
         st.rerun()
+
+# ── Restore Session ──────────────────────────────────────────────────────────
+with st.expander("🔄 Restore previous session", expanded=False):
+    if st.button("🔍 Search backups in Dropbox", key="search_backups"):
+        with st.spinner("Searching..."):
+            backups = list_backups(
+                token=DROPBOX_TOKEN,
+                app_key=DROPBOX_APP_KEY,
+                app_secret=DROPBOX_APP_SECRET,
+                refresh_token=DROPBOX_REFRESH_TOKEN,
+            )
+            st.session_state["found_backups"] = backups
+
+    if "found_backups" in st.session_state:
+        backups = st.session_state["found_backups"]
+        if not backups:
+            st.info("No backups found.")
+        else:
+            for b in backups:
+                col_b, col_r = st.columns([3, 1])
+                with col_b:
+                    st.caption(f"📁 `{b['path']}` — {b['modified']}")
+                with col_r:
+                    if st.button("Restore", key=f"restore_{b['path']}"):
+                        with st.spinner("Restoring..."):
+                            try:
+                                data = restore_backup(
+                                    b["path"],
+                                    token=DROPBOX_TOKEN,
+                                    app_key=DROPBOX_APP_KEY,
+                                    app_secret=DROPBOX_APP_SECRET,
+                                    refresh_token=DROPBOX_REFRESH_TOKEN,
+                                )
+                                st.session_state.pins = data.get("pins", [])
+                                st.session_state.cta_counter = data.get("cta_counter", 0)
+                                st.session_state.session_folder = data.get("session_folder", "")
+                                st.session_state.stage = "input"
+                                st.session_state.current = {}
+                                st.session_state.stage_direct = "input"
+                                st.session_state.current_direct = {}
+                                del st.session_state["found_backups"]
+                                st.success(f"✅ Restored {len(st.session_state.pins)} pins!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ Restore failed: {e}")
 
 if not st.session_state.session_folder:
     st.info("👆 Click **New Session** to create a dated folder in Dropbox and start adding pins.")
@@ -305,7 +379,7 @@ with tab_ig:
             if st.button("➕ Add to Queue", type="primary", key="ig_add_btn"):
                 st.session_state.pins.append({
                     "Title": cur["title"],
-                    "Video URL": cur["video_url"],
+                    "Video URL": _normalize_dropbox_url(cur["video_url"]),
                     "Pinterest board": cur["board"],
                     "Thumbnail": cur.get("thumbnail", "0:04"),
                     "Description": cur["description"],
@@ -314,6 +388,7 @@ with tab_ig:
                     "Keywords": cur["keywords"],
                 })
                 st.session_state.cta_counter += 1
+                _autosave(st.session_state.pins, st.session_state.cta_counter)
                 st.session_state.stage = "input"
                 st.session_state.current = {"frames": {}, "thumb_secs": []}
                 _clear_ig_fields()
@@ -335,6 +410,13 @@ with tab_direct:
     if direct_url and st.button("🔽 Fetch Preview", type="primary", key="direct_fetch_btn"):
         st.session_state.current_direct = {}
         st.session_state.stage_direct = "input"
+
+        # Normalize Dropbox dl=0 → dl=1 for media URLs only
+        if "dropbox.com" in direct_url or "dropboxusercontent.com" in direct_url:
+            direct_url = direct_url.replace("dl=0", "dl=1")
+            if "dl=1" not in direct_url:
+                sep = "&" if "?" in direct_url else "?"
+                direct_url = f"{direct_url}{sep}dl=1"
 
         tmpdir = tempfile.mkdtemp()
         url_hash = hashlib.md5(direct_url.encode()).hexdigest()[:8]
@@ -499,7 +581,7 @@ with tab_direct:
             if st.button("➕ Add to Queue", type="primary", key="dt_add_btn"):
                 st.session_state.pins.append({
                     "Title": cur["title"],
-                    "Video URL": cur.get("video_url", cur.get("media_url", "")),
+                    "Video URL": _normalize_dropbox_url(cur.get("video_url", cur.get("media_url", ""))),
                     "Pinterest board": cur["board"],
                     "Thumbnail": cur.get("thumbnail", "0:04"),
                     "Description": cur["description"],
@@ -508,6 +590,7 @@ with tab_direct:
                     "Keywords": cur["keywords"],
                 })
                 st.session_state.cta_counter += 1
+                _autosave(st.session_state.pins, st.session_state.cta_counter)
                 st.session_state.stage_direct = "input"
                 st.session_state.current_direct = {"frames": {}, "thumb_secs": []}
                 _clear_direct_fields()
